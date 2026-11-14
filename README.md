@@ -10,3 +10,4 @@ A President card game against computer players, in your browser on phone or comp
 - The 3♦ starts the first game. After that, the President starts.
 - Play the same number of cards, same number or higher, or pass.
 - The 3♠ played alone kills the round.
+- Once four cards of one number are down in a round (wilds count), the table clears and whoever put the fourth card down starts.

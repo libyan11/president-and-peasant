@@ -320,7 +320,7 @@ function dealGame() {
   const start = Math.floor(Math.random() * n);
   deck.forEach((c, i) => S.players[(start + i) % n].hand.push(c));
   S.players.forEach(p => sortHand(p.hand));
-  Object.assign(S, { pile: null, prevPiles: [], lastBy: null, passes: 0, finish: [], firstPlay: true, sel: [], wildRank: null, banner: null, busy: false, pendingLeader: null, seq: 0, exchange: null, fresh: [], phase: 'play' });
+  Object.assign(S, { pile: null, prevPiles: [], roundCounts: {}, lastBy: null, passes: 0, finish: [], firstPlay: true, sel: [], wildRank: null, banner: null, busy: false, pendingLeader: null, seq: 0, exchange: null, fresh: [], phase: 'play' });
   S.log = [];
   addLog(`Game ${S.game} dealt. ${n} players, ${deck.length} cards.`);
   if (S.prevOrder && S.prevOrder.length === n) setupExchange();
@@ -438,6 +438,9 @@ function doPlay(pi, cards, rank, kill) {
   if (!p.hand.length) finishPlayer(pi);
   if (checkGameOver()) return;
   if (kill) { endRound(pi, `${p.name}'s 3♠ kills the round.`); return; }
+  S.roundCounts = S.roundCounts || {};
+  S.roundCounts[rank] = (S.roundCounts[rank] || 0) + cards.length;
+  if (S.roundCounts[rank] >= 4) { endRound(pi, `All four ${PLURAL[rank]} are down, so the table clears.`); return; }
   S.turn = nextActive(pi);
   nextTurn();
 }
@@ -464,7 +467,7 @@ function endRound(leader, msg) {
 
 function finishRound() {
   const L = S.pendingLeader;
-  S.pendingLeader = null; S.pile = null; S.prevPiles = []; S.passes = 0; S.lastBy = null;
+  S.pendingLeader = null; S.pile = null; S.prevPiles = []; S.passes = 0; S.lastBy = null; S.roundCounts = {};
   S.players.forEach(p => { p.last = null; });
   S.banner = null; S.busy = false; S.turn = L;
   nextTurn();
@@ -561,7 +564,8 @@ function botChoose(pi) {
     const left = hand.length - need;
     if (w > 0 && !(danger || left <= 2 || r >= 13)) continue;
     if (r === 15 && !(danger || pile.rank >= 12 || hand.length <= 4)) continue;
-    const cost = r + (nat.length > need ? 2.5 : 0) + w * 7 + (r === 15 ? 5 : 0);
+    const clears = ((S.roundCounts || {})[r] || 0) + need >= 4;
+    const cost = r + (nat.length > need ? 2.5 : 0) + w * 7 + (r === 15 ? 5 : 0) - (clears ? 4 : 0);
     if (!best || cost < best.cost) best = { cards: use, rank: r, cost };
   }
   const killer = hand.find(is3S);
@@ -703,7 +707,9 @@ function renderTable() {
   pile.innerHTML =
     (prev ? `<div class="prev" aria-hidden="true">${prev.cards.map(c => cardHTML(c)).join('')}</div>` : '') +
     `<div class="topplay${animate ? ' drop' : ''}">${S.pile.cards.map(c => cardHTML(c, { as: asOf(S.pile)(c) })).join('')}</div>`;
-  lbl.innerHTML = `<b>${esc(cap(describe(S.pile)))}</b> · ${esc(name(S.pile.by))}`;
+  const down = S.pile.kill ? 0 : ((S.roundCounts || {})[S.pile.rank] || 0);
+  lbl.innerHTML = `<b>${esc(cap(describe(S.pile)))}</b> · ${esc(name(S.pile.by))}` +
+    (down >= 2 ? `<br>${Math.min(down, 4)} of 4 ${PLURAL[S.pile.rank]} down this round` : '');
 }
 
 function exchangeHTML() {
@@ -816,6 +822,7 @@ function openRules() {
     <li><b>Who starts.</b> In the first game, whoever holds the 3♦ starts, and that first play has to include it. From the second game on, the President starts and can play anything.</li>
     <li><b>Following.</b> Lead a single, pair, triple or more of one number. The next player plays the same number of cards, of the same number or higher, or passes.</li>
     <li><b>3♠ kills.</b> Played alone on top of anything, the 3♠ ends the round on the spot and you lead the next one.</li>
+    <li><b>Four of a kind clears.</b> Once four cards of the same number are down in a round, the table clears. They don't have to be played together, and wild cards played as that number count. Whoever put down the fourth card starts the next round.</li>
     <li><b>Round end.</b> When everyone else passes, the cards are cleared and the play goes back to whoever put down the last cards. They start the next round. If they are already out, the next player starts.</li>
     <li><b>Titles.</b> First out is President, then Vice President. Second to last is Vice Peasant, last is Peasant. Everyone in between is a Citizen.</li>
     <li><b>Next game.</b> The Peasant hands their 2 best cards to the President, who gives back any 2. The Vice Peasant and Vice President swap 1 the same way. With 3 players it is 1 card each way.</li>
