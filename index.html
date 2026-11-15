@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F3A33">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="President">
 <meta name="description" content="Play the President card game online with friends or against computer players: 2 is high, 6s and jokers are wild, 3♦ opens and 3♠ kills the round.">
 <title>President &amp; Peasant</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -58,14 +63,17 @@ body {
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   overflow-x: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
 }
-button { font: inherit; color: inherit; cursor: pointer; }
+button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
+#app, .seats, .table, .hand, .actions { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 a { color: var(--brass); }
 h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wrap: balance; }
 
 /* Home and lobby */
-.screen { min-height: 100%; display: grid; place-items: center; padding-block: 24px; }
+.screen { min-height: 100%; display: grid; place-items: center; padding-block: max(20px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-bottom, 0px)); }
 .panel { width: min(100%, 460px); display: flex; flex-direction: column; gap: 16px; background: var(--felt-2); border: 1px solid var(--line); border-radius: 20px; padding: 24px 20px; box-shadow: 0 20px 50px var(--shadow); }
 .logo { font-size: 30px; font-weight: 800; letter-spacing: .02em; }
 .logo span { color: var(--brass); }
@@ -75,7 +83,7 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
 .row > * { min-width: 0; }
 .grow { flex: 1; }
-.input { font: inherit; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--rail); color: var(--ink); width: 100%; }
+.input { font: inherit; font-size: 16px; min-height: 46px; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--rail); color: var(--ink); width: 100%; }
 .code-input { text-transform: uppercase; letter-spacing: .3em; font-weight: 800; }
 .msg { min-height: 20px; font-weight: 700; font-size: 13.5px; color: var(--muted); }
 .msg.err { color: var(--danger); }
@@ -90,10 +98,10 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--good); flex: none; }
 .dot.off { background: var(--danger); }
 .dot.cpu { background: var(--muted); }
-.x { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 3px 9px; font-size: 12px; font-weight: 700; }
+.x { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 6px 12px; min-height: 36px; font-size: 13px; font-weight: 700; }
 
 /* Game */
-#app { height: 100%; max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; padding-block: 10px 8px; }
+#app { height: 100%; max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; padding-block: max(10px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-bottom, 0px)); }
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand h1 { font-size: 19px; font-weight: 800; letter-spacing: .02em; }
 .brand h1 span { color: var(--brass); }
@@ -101,8 +109,11 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .net { color: var(--good); }
 .net.warn { color: var(--brass); }
 .top-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.ghost { background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 700; color: var(--ink); }
-.ghost:hover { border-color: var(--brass); }
+.ghost { background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; min-height: 38px; font-size: 13px; font-weight: 700; color: var(--ink); }
+@media (hover: hover) { .ghost:hover { border-color: var(--brass); } }
+#btnMenu { display: none; }
+.menu-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.menu-list .btn { text-align: left; }
 
 .seats { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 8px; }
 .seat { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px 7px; border-radius: 14px; background: var(--shade); border: 1px solid var(--line); text-align: center; min-width: 0; transition: border-color .2s, box-shadow .2s; }
@@ -117,6 +128,7 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .back-mini { width: 12px; height: 16px; border-radius: 2px; border: 1px solid var(--brass-deep); background: repeating-linear-gradient(45deg, var(--brass-deep) 0 2px, var(--rail) 2px 4px); }
 .seat-act { font-size: 11px; font-weight: 700; color: var(--ink); min-height: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seat-act.pass { color: var(--muted); font-style: italic; }
+.seat-act.away { color: var(--danger); }
 
 .badge { display: inline-block; font-size: 9.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .badge.t-president { background: var(--brass); border-color: var(--brass); color: var(--on-brass); }
@@ -172,12 +184,15 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .status { font-size: 14px; font-weight: 700; min-height: 20px; }
 .sub { font-size: 12.5px; color: var(--danger); font-weight: 700; min-height: 17px; }
 .rank-pick { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); font-weight: 700; }
-.chip { min-width: 30px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--shade); font-weight: 800; font-size: 13px; }
+.me.my-turn .status { color: var(--brass); }
+.chip { min-width: 38px; min-height: 38px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--shade); font-weight: 800; font-size: 13px; }
 .chip.on { background: var(--brass); color: var(--on-brass); border-color: var(--brass); }
 
-.hand { --overlap: 6px; display: flex; justify-content: center; padding-top: 16px; min-height: calc(var(--cw) * 1.42 + 18px); }
-.hand .card + .card { margin-left: var(--overlap); }
-.hand .card:hover { transform: translateY(-5px); }
+.hand { display: flex; flex-direction: column; align-items: center; padding-top: 16px; min-height: calc(var(--cw) * 1.42 + 18px); }
+.hand-row { --overlap: 6px; display: flex; justify-content: center; width: 100%; }
+.hand-row + .hand-row { margin-top: calc(var(--cw) * -.74); }
+.hand-row .card + .card { margin-left: var(--overlap); }
+@media (hover: hover) { .hand .card:not(.sel):hover { transform: translateY(-5px); } }
 .hand .card.sel { transform: translateY(-15px); box-shadow: 0 0 0 2px var(--brass), 0 8px 16px var(--shadow); }
 .hand .card.fresh::after { content: "NEW"; position: absolute; top: -9px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: 800; letter-spacing: .08em; background: var(--good); color: var(--rail); padding: 1px 5px; border-radius: 999px; }
 .out-note { margin: 0; align-self: center; text-align: center; color: var(--muted); font-weight: 700; }
@@ -209,16 +224,48 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .order .pts small { display: block; color: var(--muted); font-weight: 600; font-size: 11px; }
 .sheet-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
-@media (max-width: 420px) {
-  .brand h1 { font-size: 16px; }
-  .ghost { padding: 5px 9px; font-size: 12px; }
-  .seat { padding: 6px 2px; }
-  .avatar { width: 28px; height: 28px; font-size: 14px; }
-  .room-code { font-size: 38px; }
-}
-@media (max-height: 640px) {
+@media (max-width: 560px) {
+  #btnRules, #btnScores, #btnLeave { display: none; }
+  #btnMenu { display: inline-block; }
+  .brand h1 { font-size: 16px; white-space: nowrap; }
+  .seats { gap: 5px; }
+  .seat { padding: 6px 2px; gap: 2px; border-radius: 12px; }
   .avatar { display: none; }
-  .table { min-height: 140px; }
+  .seat-name { font-size: 12.5px; }
+  .seat-count .cword { display: none; }
+  .seat-act { font-size: 10.5px; }
+  .badge { font-size: 8.5px; padding: 1px 5px; letter-spacing: .05em; }
+  .room-code { font-size: 38px; }
+  .table { min-height: 150px; padding: 10px; }
+}
+/* phone held sideways: squeeze everything vertically so the hand and buttons stay on screen */
+@media (max-height: 500px) and (orientation: landscape) {
+  :root { --cw: 44px; }
+  #app { gap: 5px; padding-block: max(4px, env(safe-area-inset-top, 0px)) max(4px, env(safe-area-inset-bottom, 0px)); }
+  .brand h1 { font-size: 14px; }
+  .brand p { display: none; }
+  .ghost { min-height: 32px; padding: 3px 12px; }
+  .avatar { display: none; }
+  .seat { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 1px 6px; padding: 4px; }
+  .seat-act { flex-basis: 100%; min-height: 0; }
+  .table { min-height: 0; padding: 4px 10px; gap: 2px; border-radius: 28px; }
+  .pile-label { font-size: 12px; min-height: 0; }
+  .empty { padding: 10px 18px; }
+  .me { gap: 4px; }
+  .me-info { display: none; }
+  .status { font-size: 13px; min-height: 0; }
+  .sub { min-height: 0; }
+  .hand { padding-top: 12px; min-height: 0; }
+  .btn { padding: 8px 12px; }
+  .log { display: none; }
+}
+@media (max-width: 360px) {
+  .brand h1 { font-size: 14px; }
+  :root { --cw: 50px; }
+}
+@media (max-height: 640px) and (orientation: portrait) {
+  .avatar { display: none; }
+  .table { min-height: 130px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -298,6 +345,7 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
       <button class="ghost" id="btnRules" type="button">Rules</button>
       <button class="ghost" id="btnScores" type="button">Scores</button>
       <button class="ghost" id="btnLeave" type="button">Leave</button>
+      <button class="ghost" id="btnMenu" type="button" aria-label="Menu: rules, scores, leave">Menu</button>
     </div>
   </header>
 
@@ -309,7 +357,7 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
     <div class="banner" id="banner" hidden></div>
   </section>
 
-  <section class="me" aria-label="Your hand">
+  <section class="me" id="me" aria-label="Your hand">
     <div class="me-bar">
       <div class="me-info" id="meInfo"></div>
       <div class="status" id="status" aria-live="polite"></div>
@@ -1169,6 +1217,7 @@ function myPendingSwap() { return V && V.exchange ? V.exchange.find(ex => ex.hi 
 
 function render() {
   const screen = !role || (role === 'guest' && !V) ? 'home' : V && V.phase === 'lobby' ? 'lobby' : 'game';
+  if (screen !== 'game') { document.title = 'President & Peasant'; wasMyTurn = false; if (screen === 'home' && wakeLock) { try { wakeLock.release(); } catch (e) { /* skip */ } wakeLock = null; } }
   $('home').hidden = screen !== 'home';
   $('lobby').hidden = screen !== 'lobby';
   $('app').hidden = screen !== 'game';
@@ -1204,6 +1253,7 @@ function renderLobby() {
   renderNet();
   $('lCode').textContent = roomCode;
   $('lLink').textContent = shareLink();
+  $('lCopy').textContent = navigator.share ? 'Share link' : 'Copy link';
   const host = role === 'host';
   const n = V.players.length;
   $('lCount').textContent = `Players (${n} of ${MAX_PLAYERS})`;
@@ -1230,6 +1280,8 @@ function renderGame() {
   renderTable();
   renderMe();
   renderLog();
+  turnSignal();
+  keepAwake();
   if (V.phase === 'over' && shownOver !== V.game) { shownOver = V.game; setTimeout(openResults, 700); }
   if (V.phase === 'over' && !$('modal').hidden && $('sheet').dataset.kind === 'results') openResults();
 }
@@ -1246,15 +1298,16 @@ function renderSeats() {
     if (p.place != null && V.phase !== 'over' && !p.stuck) act = `Out · ${ordinal(p.place)}`;
     else if (p.place != null) act = ordinal(p.place);
     else if (p.stuck) { act = 'Stuck on wilds'; cls = 'pass'; }
+    else if (!p.bot && !p.online) { act = 'Away · computer plays'; cls = 'away'; }
     else if (p.last && p.last.type === 'pass') { act = 'Passed'; cls = 'pass'; }
     else if (p.last && p.last.type === 'play') act = cap(p.last.text);
-    else if (turn) { act = p.bot || !p.online ? 'Thinking…' : 'Their turn'; cls = 'pass'; }
-    const tag = p.bot ? '<small>CPU</small>' : !p.online ? '<small class="away">AWAY</small>' : '';
+    else if (turn) { act = p.bot ? 'Thinking…' : 'Their turn'; cls = 'pass'; }
+    const badge = p.title ? titleBadge(p) : p.bot ? '<span class="badge">Computer</span>' : titleBadge(p);
     return `<div class="seat${turn ? ' is-turn' : ''}${p.place != null ? ' is-out' : ''}">
       <div class="avatar${p.title === 'President' ? ' pres' : ''}" aria-hidden="true">${esc(p.name.charAt(0))}</div>
-      <div class="seat-name">${esc(p.name)}${tag}</div>
-      ${titleBadge(p)}
-      <div class="seat-count"><span class="back-mini" aria-hidden="true"></span><span>${p.count} card${p.count === 1 ? '' : 's'}</span></div>
+      <div class="seat-name">${esc(p.name)}</div>
+      ${badge}
+      <div class="seat-count"><span class="back-mini" aria-hidden="true"></span><span>${p.count}<span class="cword"> card${p.count === 1 ? '' : 's'}</span></span></div>
       <div class="seat-act ${cls}">${esc(act)}</div>
     </div>`;
   }).join('');
@@ -1370,17 +1423,42 @@ function renderHand() {
   const h = $('hand'), mp = myPlayer(), hand = myHand();
   if (!mp) { h.innerHTML = '<p class="out-note">You are watching this game.</p>'; return; }
   if (!hand.length) { h.innerHTML = `<p class="out-note">${V.phase === 'over' ? 'Hands are empty.' : 'No cards left. Watching the table.'}</p>`; return; }
-  h.innerHTML = hand.map(c => cardHTML(c, { btn: true, sel: sel.includes(c.id), fresh: mp.fresh.includes(c.id) })).join('');
+  /* on a narrow screen a big hand goes into two overlapping rows, so every card keeps a wide enough strip to tap */
+  const cw = parseFloat(getComputedStyle(h).getPropertyValue('--cw')) || 54;
+  const W = h.clientWidth || 340;
+  const oneRowStep = hand.length > 1 ? (W - cw) / (hand.length - 1) : cw;
+  const rows = hand.length > 7 && oneRowStep < 30 ? [hand.slice(0, Math.ceil(hand.length / 2)), hand.slice(Math.ceil(hand.length / 2))] : [hand];
+  h.innerHTML = rows.map(r => `<div class="hand-row">${r.map(c => cardHTML(c, { btn: true, sel: sel.includes(c.id), fresh: mp.fresh.includes(c.id) })).join('')}</div>`).join('');
   fitHand();
 }
 function fitHand() {
-  const h = $('hand'), n = myHand().length;
-  if (!n) return;
+  const h = $('hand');
   const cw = parseFloat(getComputedStyle(h).getPropertyValue('--cw')) || 54;
   const W = h.clientWidth;
-  const step = n > 1 ? Math.max(12, Math.min(cw + 6, (W - cw) / (n - 1))) : cw;
-  h.style.setProperty('--overlap', (step - cw) + 'px');
+  h.querySelectorAll('.hand-row').forEach(row => {
+    const n = row.children.length;
+    const step = n > 1 ? Math.max(12, Math.min(cw + 6, (W - cw) / (n - 1))) : cw;
+    row.style.setProperty('--overlap', (step - cw) + 'px');
+  });
 }
+
+/* your turn: buzz the phone (where supported) and flag it in the tab title */
+let wasMyTurn = false, wakeLock = null;
+function turnSignal() {
+  const mine = !!(V && V.phase === 'play' && V.turn === V.me && !V.busy && myPlayer() && !myPlayer().stuck && myHand().length);
+  $('me').classList.toggle('my-turn', mine);
+  document.title = mine ? 'Your turn · President & Peasant' : 'President & Peasant';
+  if (mine && !wasMyTurn && role !== 'solo') { try { navigator.vibrate && navigator.vibrate(120); } catch (e) { /* not supported */ } }
+  wasMyTurn = mine;
+}
+/* keep the screen on while a game is running */
+function keepAwake() {
+  const want = !!(V && V.phase !== 'lobby') && document.visibilityState === 'visible';
+  if (want && !wakeLock && navigator.wakeLock) {
+    navigator.wakeLock.request('screen').then(l => { wakeLock = l; l.addEventListener('release', () => { wakeLock = null; }); }).catch(() => {});
+  } else if (!want && wakeLock) { try { wakeLock.release(); } catch (e) { /* skip */ } wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
 function renderLog() {
   const log = V.log || [];
   $('logLast').textContent = log.length ? log[log.length - 1] : 'Game log';
@@ -1444,10 +1522,10 @@ function openScores() {
 }
 
 function openLeave() {
-  const msg = role === 'host' ? 'This closes the room for everyone in it.' : role === 'guest' ? 'The computer plays your cards while you are gone. You can rejoin with the same code and name.' : 'Your game is saved. You can continue it from the menu.';
-  openModal(`<h2>${role === 'host' ? 'Close the <span>room</span>?' : role === 'guest' ? 'Leave the <span>room</span>?' : 'Back to the <span>menu</span>?'}</h2>
+  const msg = role === 'host' ? 'This closes the room for everyone in it.' : role === 'guest' ? 'The computer plays your cards while you are gone. You can rejoin with the same code and name.' : 'Your game is saved. You can continue it from the start screen.';
+  openModal(`<h2>${role === 'host' ? 'Close the <span>room</span>?' : role === 'guest' ? 'Leave the <span>room</span>?' : 'Quit to the <span>start screen</span>?'}</h2>
     <p class="lede">${msg}</p>
-    <div class="sheet-actions"><button class="btn" type="button" data-close>Stay</button><button class="btn primary" type="button" id="mLeave">${role === 'host' ? 'Close room' : role === 'guest' ? 'Leave' : 'Back to menu'}</button></div>`);
+    <div class="sheet-actions"><button class="btn" type="button" data-close>Stay</button><button class="btn primary" type="button" id="mLeave">${role === 'host' ? 'Close room' : role === 'guest' ? 'Leave' : 'Quit to start screen'}</button></div>`);
 }
 
 /* ================= starting things ================= */
@@ -1525,6 +1603,10 @@ $('lLeave').addEventListener('click', openLeave);
 $('lCopy').addEventListener('click', () => {
   const link = shareLink(), msg = $('lCopyMsg');
   const done = t => { msg.textContent = t; setTimeout(() => { msg.textContent = ''; }, 2500); };
+  if (navigator.share) {
+    navigator.share({ title: 'President & Peasant', text: `Join my President & Peasant room. Code: ${roomCode}`, url: link }).catch(() => {});
+    return;
+  }
   const pick = () => { const r = document.createRange(); r.selectNodeContents($('lLink')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); done('Link selected. Copy it from here.'); };
   try { navigator.clipboard.writeText(link).then(() => done('Link copied. Send it to your friends.'), pick); } catch (e) { pick(); }
 });
@@ -1579,9 +1661,23 @@ $('btnHint').addEventListener('click', () => {
 $('btnRules').addEventListener('click', openRules);
 $('btnScores').addEventListener('click', openScores);
 $('btnLeave').addEventListener('click', openLeave);
+$('btnMenu').addEventListener('click', () => {
+  openModal(`<h2>Menu</h2>
+    <div class="menu-list">
+      <button class="btn" type="button" id="mmRules">Rules</button>
+      <button class="btn" type="button" id="mmScores">Scores</button>
+      ${V && V.phase === 'over' ? '<button class="btn" type="button" id="mmResults">Last game result</button>' : ''}
+      <button class="btn" type="button" id="mmLeave">${role === 'host' ? 'Close room' : role === 'guest' ? 'Leave room' : 'Quit to start screen'}</button>
+    </div>
+    <div class="sheet-actions"><button class="btn primary" type="button" data-close>Back to the game</button></div>`);
+});
 
 $('modal').addEventListener('click', e => {
   if (e.target === $('modal') || e.target.closest('[data-close]')) closeModal();
+  else if (e.target.closest('#mmRules')) openRules();
+  else if (e.target.closest('#mmScores')) openScores();
+  else if (e.target.closest('#mmResults')) openResults();
+  else if (e.target.closest('#mmLeave')) openLeave();
   else if (e.target.closest('#mNext')) { closeModal(); act('next'); }
   else if (e.target.closest('#mLobby')) { closeModal(); act('lobby'); }
   else if (e.target.closest('#mLeave')) {
@@ -1591,7 +1687,7 @@ $('modal').addEventListener('click', e => {
   }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').hidden) closeModal(); });
-window.addEventListener('resize', () => { if (V && !$('app').hidden) fitHand(); });
+window.addEventListener('resize', () => { if (V && !$('app').hidden) renderHand(); });
 window.addEventListener('pagehide', () => { if (role === 'guest' && hostConn && hostConn.open) { try { hostConn.send({ t: 'away' }); } catch (e) { /* skip */ } } });
 window.addEventListener('beforeunload', e => { if (role === 'host' && conns.size) { e.preventDefault(); e.returnValue = ''; } });
 
