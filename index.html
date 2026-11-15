@@ -3,14 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Play the President card game against computer players: 2 is high, 6s and jokers are wild, 3♦ opens and 3♠ kills the round.">
+<meta name="description" content="Play the President card game online with friends or against computer players: 2 is high, 6s and jokers are wild, 3♦ opens and 3♠ kills the round.">
 <title>President &amp; Peasant</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Manrope:wght@500;600;700;800&display=swap">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <style>
-/* Layout: a felt card table. Opponents sit along the far rail, the pile is in the middle, your fanned hand runs along the near edge. */
+/* Layout: a felt card table. Opponents sit along the far rail, the pile is in the middle, your fanned hand runs along the near edge. Home and lobby are single cards on the same felt. */
 :root {
   --felt: #0F3A33;
   --felt-2: #0A2925;
@@ -58,21 +60,50 @@ body {
   overflow-x: hidden;
 }
 button { font: inherit; color: inherit; cursor: pointer; }
-button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+a { color: var(--brass); }
 h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wrap: balance; }
 
-#app { height: 100%; max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; padding-block: 10px 8px; }
+/* Home and lobby */
+.screen { min-height: 100%; display: grid; place-items: center; padding-block: 24px; }
+.panel { width: min(100%, 460px); display: flex; flex-direction: column; gap: 16px; background: var(--felt-2); border: 1px solid var(--line); border-radius: 20px; padding: 24px 20px; box-shadow: 0 20px 50px var(--shadow); }
+.logo { font-size: 30px; font-weight: 800; letter-spacing: .02em; }
+.logo span { color: var(--brass); }
+.tagline { margin: 6px 0 0; color: var(--muted); }
+.block { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.block h3 { font-size: 15px; letter-spacing: .06em; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row > * { min-width: 0; }
+.grow { flex: 1; }
+.input { font: inherit; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--rail); color: var(--ink); width: 100%; }
+.code-input { text-transform: uppercase; letter-spacing: .3em; font-weight: 800; }
+.msg { min-height: 20px; font-weight: 700; font-size: 13.5px; color: var(--muted); }
+.msg.err { color: var(--danger); }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.eyebrow { font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.room-code { font-family: var(--f-display); font-weight: 800; font-size: 46px; letter-spacing: .18em; color: var(--brass); line-height: 1; }
+.share { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.share code { background: var(--rail); border: 1px solid var(--line); padding: 6px 9px; border-radius: 8px; word-break: break-all; flex: 1; min-width: 0; font-family: var(--f-body); }
+.plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.plist li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; background: var(--shade); border: 1px solid var(--line); }
+.plist .nm { font-weight: 800; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--good); flex: none; }
+.dot.off { background: var(--danger); }
+.dot.cpu { background: var(--muted); }
+.x { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 3px 9px; font-size: 12px; font-weight: 700; }
 
-/* Header */
+/* Game */
+#app { height: 100%; max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; padding-block: 10px 8px; }
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand h1 { font-size: 19px; font-weight: 800; letter-spacing: .02em; }
 .brand h1 span { color: var(--brass); }
-.brand p { margin: 2px 0 0; font-size: 11px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; font-weight: 700; }
+.brand p { margin: 2px 0 0; font-size: 11px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; font-weight: 700; }
+.net { color: var(--good); }
+.net.warn { color: var(--brass); }
 .top-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .ghost { background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 700; color: var(--ink); }
 .ghost:hover { border-color: var(--brass); }
 
-/* Seats */
 .seats { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 8px; }
 .seat { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px 7px; border-radius: 14px; background: var(--shade); border: 1px solid var(--line); text-align: center; min-width: 0; transition: border-color .2s, box-shadow .2s; }
 .seat.is-turn { border-color: var(--brass); box-shadow: 0 0 0 3px var(--brass-soft); }
@@ -80,6 +111,8 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--rail); border: 2px solid var(--line); font-family: var(--f-display); font-weight: 800; font-size: 16px; }
 .avatar.pres { border-color: var(--brass); color: var(--brass); }
 .seat-name { font-weight: 800; font-size: 13px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat-name small { font-weight: 700; color: var(--muted); font-size: 10px; letter-spacing: .06em; margin-left: 3px; }
+.seat-name small.away { color: var(--danger); }
 .seat-count { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
 .back-mini { width: 12px; height: 16px; border-radius: 2px; border: 1px solid var(--brass-deep); background: repeating-linear-gradient(45deg, var(--brass-deep) 0 2px, var(--rail) 2px 4px); }
 .seat-act { font-size: 11px; font-weight: 700; color: var(--ink); min-height: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -91,7 +124,6 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .badge.t-peasant { background: var(--rail); color: var(--muted); }
 .badge.t-none { visibility: hidden; }
 
-/* Table */
 .table { position: relative; flex: 1; min-height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; border: 1px solid var(--line); border-radius: 50% / 34%; background: radial-gradient(ellipse at center, rgba(255,255,255,.04), transparent 70%); padding: 14px; }
 .pile { display: grid; place-items: center; min-height: calc(var(--cw) * 1.42); }
 .pile > * { grid-area: 1 / 1; }
@@ -107,7 +139,6 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .pile-label b { color: var(--ink); font-weight: 800; }
 .banner { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); max-width: calc(100% - 24px); background: var(--rail); border: 1px solid var(--brass); color: var(--ink); padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; text-align: center; box-shadow: 0 6px 18px var(--shadow); }
 
-/* Card swap panel */
 .swap { display: flex; flex-direction: column; gap: 10px; width: min(100%, 460px); }
 .swap-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--shade); border: 1px solid var(--line); }
 .swap-who { font-size: 13px; font-weight: 700; min-width: 0; }
@@ -115,7 +146,6 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .swap-cards { display: flex; gap: 4px; flex: none; }
 .waiting { font-size: 12px; color: var(--brass); font-weight: 700; }
 
-/* Cards */
 .card { position: relative; width: var(--cw); height: calc(var(--cw) * 1.42); flex: none; border-radius: calc(var(--cw) * .12); background: var(--card); border: 1px solid var(--card-edge); box-shadow: 0 2px 6px var(--shadow); color: var(--suit-black); padding: 0; font-family: var(--f-body); text-align: left; transition: transform .15s ease, box-shadow .15s ease; }
 .card.red { color: var(--suit-red); }
 .card.wild { background: linear-gradient(160deg, var(--card-wild), var(--card-wild-2)); }
@@ -134,7 +164,6 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .card.mini .tag, .card.mini .cc { display: none; }
 .card.back { background: repeating-linear-gradient(45deg, var(--brass-deep) 0 3px, var(--rail) 3px 6px); border-color: var(--brass-deep); }
 
-/* You */
 .me { display: flex; flex-direction: column; gap: 8px; }
 .me-bar { display: flex; flex-direction: column; gap: 2px; }
 .me-info { display: flex; align-items: center; gap: 8px; font-size: 13px; }
@@ -164,7 +193,6 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .log ol { margin: 6px 0 0; padding: 8px 12px 8px 30px; max-height: 150px; overflow-y: auto; background: var(--shade); border-radius: 10px; border: 1px solid var(--line); }
 .log li { padding: 1px 0; }
 
-/* Modal */
 .modal { position: fixed; inset: 0; z-index: 20; background: var(--backdrop); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
 .sheet { width: min(100%, 520px); max-height: 100%; overflow-y: auto; background: var(--felt-2); border: 1px solid var(--line); border-radius: 18px; padding: 22px 20px; box-shadow: 0 20px 50px var(--shadow); }
 .sheet h2 { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
@@ -180,14 +208,13 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 .order .pts { font-variant-numeric: tabular-nums; font-weight: 800; text-align: right; min-width: 52px; }
 .order .pts small { display: block; color: var(--muted); font-weight: 600; font-size: 11px; }
 .sheet-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
-.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; font-weight: 700; font-size: 13px; }
-.field input, .field select { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--rail); color: var(--ink); }
 
 @media (max-width: 420px) {
   .brand h1 { font-size: 16px; }
   .ghost { padding: 5px 9px; font-size: 12px; }
   .seat { padding: 6px 2px; }
   .avatar { width: 28px; height: 28px; font-size: 14px; }
+  .room-code { font-size: 38px; }
 }
 @media (max-height: 640px) {
   .avatar { display: none; }
@@ -198,20 +225,83 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 }
 </style>
 
-<div id="app">
+<section class="screen" id="home" hidden>
+  <div class="panel">
+    <div>
+      <h1 class="logo">President <span>&amp;</span> Peasant</h1>
+      <p class="tagline">2 is high, 6s and jokers are wild, and the 3♠ kills the round.</p>
+    </div>
+    <label class="eyebrow" for="hName">Your name</label>
+    <input class="input" id="hName" maxlength="14" autocomplete="nickname" placeholder="Type your name">
+    <div class="block">
+      <h3>Play with friends</h3>
+      <div id="onlineBox" class="row" style="flex-direction: column;">
+        <button class="btn primary" id="hCreate" type="button">Create a room</button>
+        <form class="row" id="joinForm">
+          <input class="input code-input grow" id="hCode" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" style="width:auto">
+          <button class="btn" id="hJoin" type="submit">Join room</button>
+        </form>
+        <button class="btn" id="hReopen" type="button" hidden>Reopen your room</button>
+      </div>
+      <p class="note" id="onlineNote" hidden>Online rooms work on the website, not inside this preview: <a href="https://libyan11.github.io/president-and-peasant/" target="_blank" rel="noopener">libyan11.github.io/president-and-peasant</a></p>
+    </div>
+    <div class="block">
+      <h3>Play against the computer</h3>
+      <div class="row">
+        <select class="input grow" id="hBots" style="width:auto">
+          <option value="2">2 computer players</option>
+          <option value="3" selected>3 computer players</option>
+          <option value="4">4 computer players</option>
+          <option value="5">5 computer players</option>
+        </select>
+        <button class="btn" id="hSolo" type="button">Deal</button>
+      </div>
+      <button class="btn" id="hContinue" type="button" hidden>Continue your game</button>
+    </div>
+    <p class="msg" id="homeMsg" aria-live="polite"></p>
+    <div class="row"><button class="ghost" id="hRules" type="button">Rules</button></div>
+  </div>
+</section>
+
+<section class="screen" id="lobby" hidden>
+  <div class="panel">
+    <div>
+      <p class="eyebrow">Room code</p>
+      <div class="room-code" id="lCode">····</div>
+      <p class="note" id="lNet">Opening room…</p>
+    </div>
+    <div class="share">
+      <code id="lLink"></code>
+      <button class="ghost" id="lCopy" type="button">Copy link</button>
+    </div>
+    <p class="note" id="lCopyMsg" aria-live="polite"></p>
+    <div class="block">
+      <h3 id="lCount">Players</h3>
+      <ul class="plist" id="lPlayers"></ul>
+      <div class="row" id="lHost" style="flex-direction: column;">
+        <button class="btn" id="lAddBot" type="button">Add computer player</button>
+        <button class="btn primary" id="lStart" type="button">Start game</button>
+      </div>
+      <p class="note" id="lNote"></p>
+    </div>
+    <div class="row"><button class="ghost" id="lRules" type="button">Rules</button><button class="ghost" id="lLeave" type="button">Leave room</button></div>
+  </div>
+</section>
+
+<div id="app" hidden>
   <header class="top">
     <div class="brand">
       <h1>President <span>&amp;</span> Peasant</h1>
-      <p id="gameNo">Game 1</p>
+      <p><span id="gameNo">Game 1</span> <span class="net" id="net"></span></p>
     </div>
     <div class="top-actions">
       <button class="ghost" id="btnRules" type="button">Rules</button>
       <button class="ghost" id="btnScores" type="button">Scores</button>
-      <button class="ghost" id="btnNew" type="button">New table</button>
+      <button class="ghost" id="btnLeave" type="button">Leave</button>
     </div>
   </header>
 
-  <section class="seats" id="seats" aria-label="Opponents"></section>
+  <section class="seats" id="seats" aria-label="Other players"></section>
 
   <section class="table" id="table" aria-label="Table">
     <div class="pile" id="pile"></div>
@@ -248,6 +338,7 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
 (() => {
 'use strict';
 
+/* ================= constants & helpers ================= */
 const RANKS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 const LBL = { 0: '★', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9', 10: '10', 11: 'J', 12: 'Q', 13: 'K', 14: 'A', 15: '2' };
 const PLURAL = { 3: '3s', 4: '4s', 5: '5s', 6: '6s', 7: '7s', 8: '8s', 9: '9s', 10: '10s', 11: 'Jacks', 12: 'Queens', 13: 'Kings', 14: 'Aces', 15: '2s' };
@@ -256,39 +347,41 @@ const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
 const SUIT_NAME = { S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' };
 const SUIT_ORDER = { D: 0, C: 1, H: 2, S: 3 };
 const BOT_NAMES = ['Nour', 'Sami', 'Layla', 'Karim', 'Huda'];
-const SAVE_KEY = 'pp-save-v1';
-const SET_KEY = 'pp-settings-v1';
+const MAX_PLAYERS = 6;
+const SITE = 'https://libyan11.github.io/president-and-peasant/';
 
-const store = {
-  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } }
-};
+const LS = (() => { try { return window.localStorage; } catch (e) { return null; } })();
+const SS = (() => { try { return window.sessionStorage; } catch (e) { return null; } })();
+function getItem(st, k) { try { const v = st && st.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+function setItem(st, k, v) { try { if (!st) return; if (v == null) st.removeItem(k); else st.setItem(k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } }
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const ordinal = i => ['1st', '2nd', '3rd', '4th', '5th', '6th'][i] || (i + 1) + 'th';
+const rid = () => Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
 
 const isWild = c => c.rank === 0 || c.rank === 6;
 const is3S = c => c.rank === 3 && c.suit === 'S';
 const is3D = c => c.rank === 3 && c.suit === 'D';
 
-let S = null;
-let timer = null;
-let token = 0;
-let lastSeq = -1;
+const me = (() => { let id = getItem(SS, 'pp-id'); if (!id) { id = rid(); setItem(SS, 'pp-id', id); } return id; })();
+let myName = getItem(LS, 'pp-name') || '';
+const onlineOK = !/claude|anthropic/i.test(location.hostname) && location.protocol !== 'data:';
 
-/* ---------- setup ---------- */
-function settings() {
-  const s = store.get(SET_KEY, null) || {};
-  return { name: s.name || 'You', bots: Math.min(5, Math.max(2, +s.bots || 3)), speed: s.speed === 'fast' ? 'fast' : 'normal' };
+let role = null;      // 'solo' | 'host' | 'guest' | null
+let roomCode = '';
+let S = null;         // full game state (solo and host only)
+let V = null;         // what this screen shows
+let timer = null, token = 0;
+let sel = [], wildRank = null, lastSeq = -1, shownOver = null;
+let homeMsg = '', homeErr = false;
+
+/* ================= game engine (runs on the host / solo device) ================= */
+function newPlayer(id, name, bot) {
+  return { id, name, bot: !!bot, online: true, hand: [], score: 0, title: null, place: null, last: null, pres: 0, peas: 0, fresh: [] };
 }
-
-function shuffle(a) {
-  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-  return a;
-}
-
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function makeDeck() {
   const d = []; let id = 0;
   for (const s of 'SHDC') for (const r of RANKS) d.push({ id: id++, rank: r, suit: s });
@@ -296,46 +389,66 @@ function makeDeck() {
   d.push({ id: id++, rank: 0, suit: 'R' });
   return shuffle(d);
 }
-
 function sortKey(c) {
   if (c.rank === 0) return 200 + (c.suit === 'R' ? 1 : 0);
   if (c.rank === 6) return 100 + SUIT_ORDER[c.suit];
   return c.rank * 4 + SUIT_ORDER[c.suit];
 }
 function sortHand(h) { h.sort((a, b) => sortKey(a) - sortKey(b)); }
+function seatKey() { return S.players.map(p => p.id).join(','); }
+function idxOf(pid) { return S.players.findIndex(p => p.id === pid); }
+function pname(i) { return S.players[i].name; }
+function isAuto(p) { return p.bot || !p.online; }
+function addLog(t) { S.log.push(t); if (S.log.length > 80) S.log.shift(); }
 
-function newTable(cfg) {
-  token++; clearTimeout(timer);
-  const players = [{ name: cfg.name || 'You', human: true, hand: [], score: 0, title: null, place: null, last: null, pres: 0, peas: 0 }];
-  for (let i = 0; i < cfg.bots; i++) players.push({ name: BOT_NAMES[i], human: false, hand: [], score: 0, title: null, place: null, last: null, pres: 0, peas: 0 });
-  S = { v: 1, players, game: 0, speed: cfg.speed, prevOrder: null, lastGame: null, log: [] };
-  dealGame();
+function baseState(mode) {
+  return { v: 2, mode, hostId: me, players: [], waiting: [], game: 0, prevOrder: null, prevKey: '', lastGame: null, log: [], phase: 'lobby',
+    pile: null, prevPiles: [], roundCounts: {}, lastBy: null, passes: 0, finish: [], firstPlay: true, banner: null, busy: false,
+    pendingLeader: null, seq: 0, exchange: null, exchangeDone: false, turn: 0 };
+}
+
+function botName() { return BOT_NAMES.find(n => !S.players.some(p => p.name === n)) || 'Computer ' + (S.players.length + 1); }
+
+function seatWaiting() {
+  while (S.waiting.length) {
+    const w = S.waiting[0];
+    if (S.players.length < MAX_PLAYERS) S.players.push(newPlayer(w.id, w.name, false));
+    else {
+      const b = S.players.map(p => p.bot).lastIndexOf(true);
+      if (b < 0) break;
+      S.players[b] = newPlayer(w.id, w.name, false);
+    }
+    S.players[S.players.length - 1].online = w.online !== false;
+    S.waiting.shift();
+  }
 }
 
 function dealGame() {
   token++; clearTimeout(timer);
+  seatWaiting();
+  const swap = S.prevOrder && S.prevKey === seatKey();
+  if (!swap) { S.prevOrder = null; S.players.forEach(p => { p.title = null; }); }
   S.game++;
-  const deck = makeDeck(); const n = S.players.length;
-  S.players.forEach(p => { p.hand = []; p.place = null; p.last = null; });
+  const deck = makeDeck(), n = S.players.length;
+  S.players.forEach(p => { p.hand = []; p.place = null; p.last = null; p.fresh = []; });
   const start = Math.floor(Math.random() * n);
   deck.forEach((c, i) => S.players[(start + i) % n].hand.push(c));
   S.players.forEach(p => sortHand(p.hand));
-  Object.assign(S, { pile: null, prevPiles: [], roundCounts: {}, lastBy: null, passes: 0, finish: [], firstPlay: true, sel: [], wildRank: null, banner: null, busy: false, pendingLeader: null, seq: 0, exchange: null, fresh: [], phase: 'play' });
+  Object.assign(S, { pile: null, prevPiles: [], roundCounts: {}, lastBy: null, passes: 0, finish: [], firstPlay: true, banner: null, busy: false, pendingLeader: null, exchange: null, exchangeDone: false, phase: 'play' });
   S.log = [];
-  addLog(`Game ${S.game} dealt. ${n} players, ${deck.length} cards.`);
-  if (S.prevOrder && S.prevOrder.length === n) setupExchange();
-  else startPlay();
+  addLog(`Game ${S.game} dealt to ${n} players.`);
+  if (swap) setupExchange(); else startPlay();
 }
 
-/* ---------- card swap between games ---------- */
 function giveValue(c) { if (c.rank === 0) return 20; if (c.rank === 15) return 17; if (c.rank === 6) return 16; return c.rank; }
 function keepValue(c) { if (isWild(c)) return 30; if (is3S(c)) return 25; return c.rank; }
-
 function moveCards(cards, from, to) {
   const ids = new Set(cards.map(c => c.id));
   from.hand = from.hand.filter(c => !ids.has(c.id));
   to.hand.push(...cards);
   sortHand(from.hand); sortHand(to.hand);
+  to.fresh.push(...cards.map(c => c.id));
+  from.fresh = from.fresh.filter(id => !ids.has(id));
 }
 
 function setupExchange() {
@@ -345,51 +458,57 @@ function setupExchange() {
     const loP = S.players[lo], hiP = S.players[hi];
     const best = [...loP.hand].sort((a, b) => giveValue(b) - giveValue(a)).slice(0, k);
     moveCards(best, loP, hiP);
-    if (hiP.human) S.fresh.push(...best.map(c => c.id));
-    const ex = { hi, lo, k, given: best, back: null };
-    if (!hiP.human) {
-      const back = [...hiP.hand].sort((a, b) => keepValue(a) - keepValue(b)).slice(0, k);
-      moveCards(back, hiP, loP);
-      ex.back = back;
-      if (loP.human) S.fresh.push(...back.map(c => c.id));
-    }
-    return ex;
+    addLog(`${loP.name} (${loP.title}) gives ${k === 1 ? 'the best card' : `the ${k} best cards`} to ${hiP.name} (${hiP.title}).`);
+    return { hi, lo, k, given: best, back: null };
   });
-  S.exchange.forEach(ex => addLog(`${name(ex.lo)} (${S.players[ex.lo].title}) ${S.players[ex.lo].human ? 'give' : 'gives'} ${ex.k === 1 ? 'the best card' : `the ${ex.k} best cards`} to ${name(ex.hi)} (${S.players[ex.hi].title}).`));
-  S.phase = 'exchange';
-  render();
+  S.phase = 'exchange'; S.exchangeDone = false;
+  checkExchange();
 }
 
-function pendingHumanExchange() {
-  return S.exchange ? S.exchange.find(ex => S.players[ex.hi].human && !ex.back) : null;
+function autoBack(ex) {
+  const hiP = S.players[ex.hi];
+  const back = [...hiP.hand].sort((a, b) => keepValue(a) - keepValue(b)).slice(0, ex.k);
+  moveCards(back, hiP, S.players[ex.lo]);
+  ex.back = back;
 }
 
-function humanGiveBack() {
-  const ex = pendingHumanExchange(); if (!ex) return;
-  const cards = selCards(); if (cards.length !== ex.k) return;
-  moveCards(cards, S.players[ex.hi], S.players[ex.lo]);
+function checkExchange() {
+  if (S.phase !== 'exchange') return;
+  S.exchange.forEach(ex => { if (!ex.back && isAuto(S.players[ex.hi])) autoBack(ex); });
+  if (S.exchange.every(ex => ex.back) && !S.exchangeDone) {
+    S.exchangeDone = true;
+    addLog('Cards swapped.');
+    schedule(startPlay, 3800);
+  }
+  changed();
+}
+
+function giveBack(pi, ids) {
+  if (S.phase !== 'exchange') return;
+  const ex = S.exchange.find(e => e.hi === pi && !e.back);
+  if (!ex || !Array.isArray(ids)) return;
+  const hiP = S.players[pi];
+  const cards = [...new Set(ids)].map(id => hiP.hand.find(c => c.id === id)).filter(Boolean);
+  if (cards.length !== ex.k) return;
+  moveCards(cards, hiP, S.players[ex.lo]);
   ex.back = cards;
-  S.fresh = S.fresh.filter(id => !cards.some(c => c.id === id));
-  S.sel = [];
-  addLog(`You give back ${cards.map(cardText).join(' ')} to ${name(ex.lo)}.`);
-  render();
+  addLog(`${hiP.name} gives back ${ex.k === 1 ? 'a card' : ex.k + ' cards'} to ${pname(ex.lo)}.`);
+  checkExchange();
 }
 
 function startPlay() {
-  S.phase = 'play';
-  const pres = S.prevOrder && S.prevOrder.length === S.players.length ? S.prevOrder[0] : -1;
+  S.phase = 'play'; S.exchange = null; S.exchangeDone = false;
+  const pres = S.prevOrder && S.prevKey === seatKey() ? S.prevOrder[0] : -1;
   if (pres >= 0) {
-    S.firstPlay = false;
-    S.turn = pres;
-    addLog(`${name(pres)} ${S.players[pres].human ? 'are' : 'is'} President and start${S.players[pres].human ? '' : 's'} the game.`);
+    S.firstPlay = false; S.turn = pres;
+    addLog(`${pname(pres)} is President and starts the game.`);
   } else {
     S.turn = S.players.findIndex(p => p.hand.some(is3D));
-    addLog(`${name(S.turn)} ${S.players[S.turn].human ? 'have' : 'has'} the 3♦ and start${S.players[S.turn].human ? '' : 's'}.`);
+    addLog(`${pname(S.turn)} has the 3♦ and starts.`);
   }
   nextTurn();
 }
 
-/* ---------- rules ---------- */
 function describe(play) {
   if (play.kill) return '3♠ (kill)';
   const r = play.rank, c = play.count;
@@ -406,7 +525,7 @@ function evaluate(cards, pile, mustHave3D) {
   if (mustHave3D && !cards.some(is3D)) return { ok: false, msg: 'The first play of the game has to include the 3♦.' };
   const nat = cards.filter(c => !isWild(c));
   if (new Set(nat.map(c => c.rank)).size > 1) return { ok: false, msg: 'Every card in a play must be the same number. 6s and jokers can fill in.' };
-  if (pile && cards.length !== pile.count) return { ok: false, msg: `Match the ${describe(pile)} with exactly ${pile.count} card${pile.count > 1 ? 's' : ''}.` };
+  if (pile && cards.length !== pile.count) return { ok: false, msg: `This round is ${pile.count === 1 ? 'singles' : pile.count === 2 ? 'pairs' : pile.count === 3 ? 'triples' : pile.count + ' cards at a time'}. Play exactly ${pile.count} card${pile.count > 1 ? 's' : ''}.` };
   let ranks = nat.length ? [nat[0].rank] : RANKS.slice();
   if (pile) ranks = ranks.filter(r => r >= pile.rank);
   if (!ranks.length) return { ok: false, msg: `Too low. You need ${LBL[pile.rank]} or higher.` };
@@ -419,26 +538,23 @@ function nextActive(from) {
   for (let k = 1; k <= n; k++) { const i = (from + k) % n; if (S.players[i].hand.length) return i; }
   return -1;
 }
-function name(i) { return S.players[i].name; }
 
 function doPlay(pi, cards, rank, kill) {
   const p = S.players[pi];
   const ids = new Set(cards.map(c => c.id));
   p.hand = p.hand.filter(c => !ids.has(c.id));
+  p.fresh = [];
   if (S.pile) S.prevPiles.push(S.pile);
   if (S.prevPiles.length > 3) S.prevPiles.shift();
   S.pile = { cards: cards.slice(), rank, count: cards.length, by: pi, kill: !!kill };
   S.seq++;
-  S.firstPlay = false; S.lastBy = pi; S.passes = 0; S.fresh = [];
+  S.firstPlay = false; S.lastBy = pi; S.passes = 0;
   S.players.forEach(q => { if (q.last && q.last.type === 'pass') q.last = null; });
   p.last = { type: 'play', text: describe(S.pile) };
-  if (pi === 0) { S.sel = []; S.wildRank = null; }
-  else S.sel = S.sel.filter(id => S.players[0].hand.some(c => c.id === id));
   addLog(`${p.name} played ${describe(S.pile)}.`);
   if (!p.hand.length) finishPlayer(pi);
   if (checkGameOver()) return;
   if (kill) { endRound(pi, `${p.name}'s 3♠ kills the round.`); return; }
-  S.roundCounts = S.roundCounts || {};
   S.roundCounts[rank] = (S.roundCounts[rank] || 0) + cards.length;
   if (S.roundCounts[rank] >= 4) { endRound(pi, `All four ${PLURAL[rank]} are down, so the table clears.`); return; }
   S.turn = nextActive(pi);
@@ -459,10 +575,10 @@ function doPass(pi) {
 function endRound(leader, msg) {
   const L = S.players[leader].hand.length ? leader : nextActive(leader);
   S.busy = true; S.pendingLeader = L;
-  S.banner = `${msg} ${name(L)} ${L === 0 ? 'lead' : 'leads'} next.`;
+  S.banner = `${msg} ${pname(L)} starts the next round.`;
   addLog(S.banner);
-  render();
-  schedule(finishRound, S.speed === 'fast' ? 900 : 1500);
+  changed();
+  schedule(finishRound, 1600);
 }
 
 function finishRound() {
@@ -477,7 +593,7 @@ function finishPlayer(pi) {
   S.finish.push(pi);
   const p = S.players[pi];
   p.place = S.finish.length - 1;
-  addLog(`${p.name} ${p.human ? 'are' : 'is'} out of cards and finish${p.human ? '' : 'es'} ${ordinal(p.place)}.`);
+  addLog(`${p.name} is out of cards and finishes ${ordinal(p.place)}.`);
 }
 
 function titleFor(place, n) {
@@ -495,52 +611,51 @@ function checkGameOver() {
     const last = act[0];
     S.finish.push(last);
     S.players[last].place = S.finish.length - 1;
-    addLog(`${name(last)} ${S.players[last].human ? 'are' : 'is'} left holding ${S.players[last].hand.length} card${S.players[last].hand.length > 1 ? 's' : ''}.`);
+    addLog(`${pname(last)} is left holding ${S.players[last].hand.length} card${S.players[last].hand.length > 1 ? 's' : ''}.`);
   }
   const n = S.players.length;
-  const rows = S.finish.map((pi, place) => {
+  S.lastGame = S.finish.map((pi, place) => {
     const p = S.players[pi];
     const pts = n - 1 - place;
     p.title = titleFor(place, n);
     p.score += pts;
     if (place === 0) p.pres++;
     if (place === n - 1) p.peas++;
-    return { pi, place, title: p.title, pts };
+    p.fresh = [];
+    return { pi, place, pts };
   });
-  S.lastGame = rows;
   S.prevOrder = S.finish.slice();
+  S.prevKey = seatKey();
   S.phase = 'over'; S.busy = false; S.banner = null;
-  addLog(`${name(S.finish[0])} ${S.players[S.finish[0]].human ? 'are' : 'is'} President. ${name(S.finish[n - 1])} ${S.players[S.finish[n - 1]].human ? 'are' : 'is'} Peasant.`);
-  render();
-  schedule(() => openResults(), 700);
+  addLog(`${pname(S.finish[0])} is President. ${pname(S.finish[n - 1])} is Peasant.`);
+  token++; clearTimeout(timer);
+  changed();
   return true;
 }
 
-/* ---------- computer players ---------- */
-function finishPlay(hand, pile) {
+/* computer players (also used for the Hint button) */
+function finishPlay(hand, pile, firstPlay) {
   if (pile && hand.length === 1 && is3S(hand[0])) return { cards: hand.slice(), rank: 3, kill: true };
   const nat = hand.filter(c => !isWild(c));
   if (new Set(nat.map(c => c.rank)).size > 1) return null;
   const rank = nat.length ? nat[0].rank : 15;
   if (pile && (hand.length !== pile.count || rank < pile.rank)) return null;
-  if (S.firstPlay && !hand.some(is3D)) return null;
+  if (firstPlay && !hand.some(is3D)) return null;
   return { cards: hand.slice(), rank, kill: false };
 }
 
-function botChoose(pi) {
-  const hand = S.players[pi].hand, pile = S.pile;
+function botChoose(hand, pile, firstPlay, roundCounts, oppMin) {
   const wilds = hand.filter(isWild);
   const byRank = {};
   for (const c of hand) if (!isWild(c)) (byRank[c.rank] = byRank[c.rank] || []).push(c);
   const ranksAsc = Object.keys(byRank).map(Number).sort((a, b) => a - b);
-  const others = activeIdx().filter(i => i !== pi).map(i => S.players[i].hand.length);
-  const danger = others.length ? Math.min(...others) <= 2 : false;
+  const danger = oppMin <= 2;
 
-  const fin = finishPlay(hand, pile);
+  const fin = finishPlay(hand, pile, firstPlay);
   if (fin) return fin;
 
   if (!pile) {
-    if (S.firstPlay) return { cards: byRank[3].filter(c => !is3S(c)), rank: 3 };
+    if (firstPlay) return { cards: byRank[3].filter(c => !is3S(c)), rank: 3 };
     for (const r of ranksAsc) {
       if (r === 15) continue;
       const cs = r === 3 ? byRank[r].filter(c => !is3S(c)) : byRank[r];
@@ -564,7 +679,7 @@ function botChoose(pi) {
     const left = hand.length - need;
     if (w > 0 && !(danger || left <= 2 || r >= 13)) continue;
     if (r === 15 && !(danger || pile.rank >= 12 || hand.length <= 4)) continue;
-    const clears = ((S.roundCounts || {})[r] || 0) + need >= 4;
+    const clears = ((roundCounts || {})[r] || 0) + need >= 4;
     const cost = r + (nat.length > need ? 2.5 : 0) + w * 7 + (r === 15 ? 5 : 0) - (clears ? 4 : 0);
     if (!best || cost < best.cost) best = { cards: use, rank: r, cost };
   }
@@ -580,14 +695,12 @@ function botChoose(pi) {
 
 function botMove(pi) {
   if (S.phase !== 'play' || S.busy || S.turn !== pi) return;
-  const ch = botChoose(pi);
+  const p = S.players[pi];
+  if (!isAuto(p)) return;
+  const others = activeIdx().filter(i => i !== pi).map(i => S.players[i].hand.length);
+  const ch = botChoose(p.hand, S.pile, S.firstPlay, S.roundCounts, others.length ? Math.min(...others) : 99);
   if (ch) doPlay(pi, ch.cards, ch.rank, ch.kill);
   else doPass(pi);
-}
-
-function botDelay() {
-  if (!S.players[0].hand.length) return 380;
-  return S.speed === 'fast' ? 520 : 1000;
 }
 
 function schedule(fn, ms) {
@@ -597,22 +710,387 @@ function schedule(fn, ms) {
 }
 
 function nextTurn() {
-  render();
+  changed();
   if (S.phase !== 'play' || S.busy) return;
-  if (!S.players[S.turn].human) schedule(() => botMove(S.turn), botDelay());
+  const p = S.players[S.turn];
+  if (!isAuto(p)) return;
+  const peopleLeft = S.players.some(q => !q.bot && q.online && q.hand.length);
+  schedule(() => botMove(S.turn), p.bot ? (peopleLeft ? 1000 : 380) : 8000);
 }
 
-/* ---------- log ---------- */
-function addLog(text) { S.log.push(text); if (S.log.length > 80) S.log.shift(); }
+/* host-side handling of every player's actions */
+function handleAct(pid, act, data) {
+  if (!S) return;
+  data = data || {};
+  const pi = idxOf(pid);
+  const isHost = pid === S.hostId;
+  if (act === 'play') {
+    if (pi < 0 || S.phase !== 'play' || S.busy || S.turn !== pi) return;
+    const hand = S.players[pi].hand;
+    const ids = Array.isArray(data.ids) ? [...new Set(data.ids)] : [];
+    const cards = ids.map(id => hand.find(c => c.id === id));
+    if (!cards.length || cards.some(c => !c)) return;
+    const ev = evaluate(cards, S.pile, S.firstPlay);
+    if (!ev.ok) return;
+    const rank = ev.kill ? 3 : (ev.ranks.includes(+data.rank) ? +data.rank : ev.ranks[ev.ranks.length - 1]);
+    doPlay(pi, cards, rank, ev.kill);
+  } else if (act === 'pass') {
+    if (pi < 0 || S.phase !== 'play' || S.busy || S.turn !== pi || !S.pile) return;
+    doPass(pi);
+  } else if (act === 'giveBack') {
+    if (pi >= 0) giveBack(pi, data.ids);
+  } else if (!isHost) {
+    return;
+  } else if (act === 'addBot') {
+    if (S.phase !== 'lobby' || S.players.length >= MAX_PLAYERS) return;
+    S.players.push(newPlayer('bot-' + rid(), botName(), true));
+    changed();
+  } else if (act === 'remove') {
+    if (S.phase !== 'lobby' || data.id === S.hostId) return;
+    const i = idxOf(data.id);
+    if (i < 0) return;
+    S.players.splice(i, 1);
+    conns.forEach(c => { if (c.pid === data.id) { try { c.send({ t: 'kicked' }); } catch (e) { /* gone */ } } });
+    changed();
+  } else if (act === 'start') {
+    if (S.phase !== 'lobby' || S.players.length < 3) return;
+    dealGame();
+  } else if (act === 'next') {
+    if (S.phase !== 'over') return;
+    dealGame();
+  } else if (act === 'lobby') {
+    if (S.phase !== 'over') return;
+    seatWaiting();
+    S.phase = 'lobby';
+    changed();
+  }
+}
 
-/* ---------- rendering ---------- */
+/* what each player is allowed to see */
+function viewFor(pid) {
+  const idx = S.players.findIndex(p => p.id === pid);
+  const v = JSON.parse(JSON.stringify({
+    mode: S.mode, phase: S.phase, game: S.game, pile: S.pile, prevPiles: S.prevPiles, roundCounts: S.roundCounts, turn: S.turn,
+    busy: S.busy, banner: S.banner, firstPlay: S.firstPlay, log: S.log, lastGame: S.lastGame, seq: S.seq, hostId: S.hostId,
+    waiting: S.waiting.map(w => w.name)
+  }));
+  v.me = idx;
+  v.players = S.players.map((p, j) => ({
+    id: p.id, name: p.name, bot: p.bot, online: p.online, count: p.hand.length, score: p.score, title: p.title, place: p.place,
+    last: p.last, pres: p.pres, peas: p.peas, hand: j === idx ? JSON.parse(JSON.stringify(p.hand)) : null, fresh: j === idx ? p.fresh.slice() : []
+  }));
+  v.exchange = S.exchange ? S.exchange.map(ex => {
+    const see = ex.hi === idx || ex.lo === idx;
+    return { hi: ex.hi, lo: ex.lo, k: ex.k, given: see ? ex.given : null, back: ex.back ? (see ? ex.back : 'hidden') : null };
+  }) : null;
+  return v;
+}
+
+function changed() {
+  if (role === 'host') broadcast();
+  if (role === 'host' || role === 'solo') {
+    V = viewFor(me);
+    if (role === 'solo') setItem(LS, 'pp-solo', S);
+    else setItem(LS, 'pp-host', { code: roomCode, S });
+  }
+  render();
+}
+
+/* ================= networking (host-authoritative rooms) =================
+   A direct phone-to-phone link (PeerJS) is tried first. Public MQTT relays carry the same
+   messages as a backup when a network blocks the direct link. */
+const PEER_PREFIX = 'president-peasant-room-';
+const RELAYS = [
+  ['wss://public.cloud.shiftr.io:443', { username: 'public', password: 'public' }],
+  ['wss://broker.hivemq.com:8884/mqtt', {}],
+  ['wss://broker.emqx.io:8084/mqtt', {}]
+];
+const RELAY_ROOT = 'president-peasant-v1/';
+let peer = null, hostConn = null, link = null, everConnected = false;
+const conns = new Set(), relayConns = new Map();
+let stateSeq = 0, hostSess = '', lastState = { hs: null, sv: 0 };
+let fallbackTimer = 0, giveUpTimer = 0, retryTimer = 0, helloIv = 0, beatIv = 0, lastHostMsg = 0;
+const relay = { clients: [], seq: 0, sess: '', seen: new Map() };
+
+function netReady() { return typeof Peer !== 'undefined' || typeof mqtt !== 'undefined'; }
+function newCode() { const a = 'ABCDEFGHJKMNPQRSTUVWXYZ'; let c = ''; for (let i = 0; i < 4; i++) c += a[Math.floor(Math.random() * a.length)]; return c; }
+function peerIdFor(code) { return PEER_PREFIX + code.toLowerCase(); }
+function roomTopic(rest) { return 'room/' + roomCode.toLowerCase() + '/' + rest; }
+let netText = '', netWarn = false;
+function setNet(text, warn) { netText = text || ''; netWarn = !!warn; renderNet(); }
+
+function relayStart(listen, onMsg) {
+  relayStop();
+  if (typeof mqtt === 'undefined') return;
+  relay.sess = Math.random().toString(36).slice(2, 8);
+  const topic = RELAY_ROOT + listen;
+  relay.clients = RELAYS.map(([url, o]) => {
+    let c;
+    try { c = mqtt.connect(url, Object.assign({}, o, { clientId: 'pp-' + me + '-' + Math.random().toString(36).slice(2, 6), connectTimeout: 10000, reconnectPeriod: 4000, keepalive: 30 })); }
+    catch (e) { return null; }
+    c.on('connect', () => c.subscribe(topic));
+    c.on('message', (t, buf) => {
+      let env; try { env = JSON.parse(buf.toString()); } catch (e) { return; }
+      if (!env || !env.id || env.f === me || relay.seen.has(env.id)) return;
+      relay.seen.set(env.id, 1);
+      if (relay.seen.size > 600) relay.seen.delete(relay.seen.keys().next().value);
+      onMsg(env.m, String(env.f || ''));
+    });
+    c.on('error', () => {});
+    return c;
+  }).filter(Boolean);
+}
+function relaySend(to, m) {
+  const env = JSON.stringify({ f: me, id: me + '.' + relay.sess + '.' + (++relay.seq), m });
+  relay.clients.forEach(c => { if (c.connected) { try { c.publish(RELAY_ROOT + to, env); } catch (e) { /* skip */ } } });
+}
+function relayStop() {
+  relay.clients.forEach(c => { try { c.end(true); } catch (e) { /* skip */ } });
+  relay.clients = []; relay.seen.clear();
+}
+
+/* ---- host ---- */
+function broadcast() {
+  const sv = ++stateSeq;
+  conns.forEach(c => { if (c.open && c.pid) { try { c.send({ t: 'state', v: viewFor(c.pid), hs: hostSess, sv }); } catch (e) { /* dropped */ } } });
+}
+function startHostRelay() {
+  relayConns.clear();
+  relayStart(roomTopic('host'), (m, f) => {
+    if (role !== 'host' || !m || !f) return;
+    let c = relayConns.get(f);
+    if (!c) {
+      if (m.t !== 'hello') return;
+      c = { relay: true, from: f, pid: null, open: true, seen: 0, send: x => relaySend(roomTopic('g/' + f), x), close() { this.open = false; } };
+      relayConns.set(f, c);
+    }
+    c.seen = Date.now();
+    if (m.t !== 'ping') hostReceive(c, m);
+  });
+  clearInterval(beatIv);
+  /* every guest pings every 5s; anyone silent for 15-20s is treated as gone, and the computer covers their turns */
+  beatIv = setInterval(() => {
+    const now = Date.now();
+    relayConns.forEach((c, f) => { if (now - c.seen > 20000) { relayConns.delete(f); c.open = false; hostDrop(c); } });
+    conns.forEach(c => {
+      if (!c.relay && c.seen && now - c.seen > 15000) { try { c.close(); } catch (e) { /* skip */ } hostDrop(c); }
+      else { try { c.send({ t: 'ping' }); } catch (e) { /* skip */ } }
+    });
+  }, 5000);
+}
+function openHostPeer(attempt) {
+  attempt = attempt || 0;
+  if (typeof Peer === 'undefined') { setNet('Room open · backup link'); return; }
+  setNet('Opening room…', true);
+  peer = new Peer(peerIdFor(roomCode), { debug: 1 });
+  peer.on('open', () => setNet('Room open'));
+  peer.on('connection', c => {
+    c.on('data', m => hostReceive(c, m));
+    c.on('close', () => hostDrop(c));
+    c.on('error', () => hostDrop(c));
+  });
+  peer.on('disconnected', () => { setNet('Reconnecting…', true); setTimeout(() => { try { if (peer && !peer.destroyed) peer.reconnect(); } catch (e) { /* skip */ } }, 1500); });
+  peer.on('error', e => {
+    if (e.type === 'unavailable-id' && attempt < 12) {
+      setNet('Reopening room…', true);
+      try { peer.destroy(); } catch (x) { /* skip */ }
+      setTimeout(() => { if (role === 'host') openHostPeer(attempt + 1); }, 3000);
+    } else if (e.type !== 'peer-unavailable') setNet('Connection problem (' + e.type + ')', true);
+  });
+}
+function hostReceive(c, m) {
+  if (!m || typeof m !== 'object' || !S) return;
+  c.seen = Date.now();
+  if (m.t === 'ping') return;
+  if (m.t === 'away' && c.pid) {
+    conns.delete(c);
+    const p = S.players.find(x => x.id === c.pid);
+    if (p) p.online = false;
+    const w = S.waiting.find(x => x.id === c.pid);
+    if (w) w.online = false;
+    afterPresence();
+    changed();
+    return;
+  }
+  if (m.t === 'hello') {
+    const pid = String(m.cid || '').slice(0, 24);
+    if (!pid || pid === S.hostId) { try { c.close(); } catch (e) { /* skip */ } return; }
+    const name = String(m.name || '').trim().slice(0, 14) || 'Player';
+    c.pid = pid; conns.add(c);
+    let p = S.players.find(x => x.id === pid);
+    if (!p) {
+      p = S.players.find(x => !x.bot && !x.online && x.id !== S.hostId && x.name.toLowerCase() === name.toLowerCase());
+      if (p) p.id = pid;
+    }
+    if (p) { p.name = name; p.online = true; changed(); return; }
+    const w = S.waiting.find(x => x.id === pid);
+    if (w) { w.name = name; w.online = true; changed(); return; }
+    if (S.phase === 'lobby') {
+      if (S.players.length < MAX_PLAYERS) S.players.push(newPlayer(pid, name, false));
+      else {
+        const b = S.players.map(x => x.bot).lastIndexOf(true);
+        if (b < 0) { try { c.send({ t: 'full' }); } catch (e) { /* skip */ } conns.delete(c); return; }
+        S.players[b] = newPlayer(pid, name, false);
+      }
+    } else S.waiting.push({ id: pid, name, online: true });
+    addLog(`${name} joined the room.`);
+    changed();
+    return;
+  }
+  if (m.t === 'bye' && c.pid) {
+    const i = idxOf(c.pid);
+    if (S.phase === 'lobby' && i >= 0) S.players.splice(i, 1);
+    S.waiting = S.waiting.filter(w => w.id !== c.pid);
+    conns.delete(c);
+    if (i >= 0 && S.players[i] && S.players[i].id === c.pid) { S.players[i].online = false; afterPresence(); }
+    changed();
+    return;
+  }
+  if (m.t === 'act' && c.pid) handleAct(c.pid, String(m.act), m.data);
+}
+function hostDrop(c) {
+  if (!conns.has(c)) return;
+  conns.delete(c);
+  if (c.pid && ![...conns].some(x => x.pid === c.pid)) {
+    const p = S && S.players.find(x => x.id === c.pid);
+    if (p) p.online = false;
+    const w = S && S.waiting.find(x => x.id === c.pid);
+    if (w) w.online = false;
+    afterPresence();
+    changed();
+  }
+}
+function afterPresence() {
+  if (!S) return;
+  if (S.phase === 'exchange') checkExchange();
+  else if (S.phase === 'play' && !S.busy) nextTurn();
+}
+function normalizeHost() {
+  S.players.forEach(p => { if (!p.bot) p.online = p.id === me; });
+  S.waiting.forEach(w => { w.online = false; });
+  token++; clearTimeout(timer);
+  if (S.pendingLeader != null) finishRound();
+  else if (S.phase === 'exchange') { S.exchangeDone = false; checkExchange(); }
+  else if (S.phase === 'play') nextTurn();
+}
+
+/* ---- guest ---- */
+function joinRoom(code) {
+  role = 'guest'; roomCode = code; V = null; everConnected = false; link = null; lastState = { hs: null, sv: 0 };
+  homeMsg = 'Connecting to room ' + code + '…'; homeErr = false;
+  render();
+  setNet('Connecting…', true);
+  relayStart(roomTopic('g/' + me), guestRelayMsg);
+  clearTimeout(fallbackTimer); fallbackTimer = setTimeout(useRelay, 4000);
+  clearTimeout(giveUpTimer);
+  giveUpTimer = setTimeout(() => {
+    if (role === 'guest' && !everConnected) leave(`Couldn't reach room ${code}. Check the code, and that the host still has the game open.`);
+  }, 25000);
+  clearInterval(beatIv);
+  beatIv = setInterval(() => {
+    if (role !== 'guest' || !link || !hostConn) return;
+    try { hostConn.send({ t: 'ping' }); } catch (e) { /* skip */ }
+    if (Date.now() - lastHostMsg > 16000) {
+      setNet('Lost the host. Reconnecting…', true);
+      if (link === 'relay') hostConn.send({ t: 'hello', cid: me, name: myName });
+      else { link = null; hostConn = null; lastHostMsg = Date.now(); retryLater(); useRelay(); }
+    }
+  }, 5000);
+  if (typeof Peer === 'undefined') { useRelay(); return; }
+  peer = new Peer({ debug: 1 });
+  peer.on('open', connectHost);
+  peer.on('disconnected', () => { setTimeout(() => { try { if (peer && !peer.destroyed) peer.reconnect(); } catch (e) { /* skip */ } }, 1500); });
+  peer.on('error', e => {
+    if (link === 'relay') return;
+    useRelay();
+    setNet(e.type === 'peer-unavailable' ? (everConnected ? 'Host not reachable. Retrying…' : 'Trying another way to reach the room…') : 'Connection problem. Retrying…', true);
+    retryLater();
+  });
+}
+function linked(how) {
+  everConnected = true; link = how; clearTimeout(giveUpTimer); lastHostMsg = Date.now();
+  setNet('Connected' + (how === 'relay' ? ' · backup link' : ''));
+  setItem(LS, 'pp-guest', { code: roomCode });
+}
+function useRelay() {
+  if (role !== 'guest' || link === 'peer' || helloIv) return;
+  const hello = () => {
+    if (role !== 'guest' || link) { clearInterval(helloIv); helloIv = 0; return; }
+    relaySend(roomTopic('host'), { t: 'hello', cid: me, name: myName });
+  };
+  helloIv = setInterval(hello, 2000); hello();
+}
+function relayHostConn() { return { relay: true, open: true, send: m => relaySend(roomTopic('host'), m) }; }
+function guestRelayMsg(m) {
+  if (role !== 'guest' || !m) return;
+  lastHostMsg = Date.now();
+  if (m.t !== 'state' && m.t !== 'full' && m.t !== 'kicked' && m.t !== 'closed') return;
+  if (m.t === 'state' && link !== 'peer' && link !== 'relay') { hostConn = relayHostConn(); linked('relay'); }
+  else if (link === 'relay') setNet('Connected · backup link');
+  if (link === 'relay' || m.t !== 'state') guestMsg(m);
+}
+function guestMsg(m) {
+  if (!m) return;
+  if (m.t === 'full') { leave('That room is full. Rooms hold 6 players.'); return; }
+  if (m.t === 'kicked') { leave('The host removed you from the room.'); return; }
+  if (m.t === 'closed') { leave('The host closed the room.'); return; }
+  if (m.t !== 'state') return;
+  if (m.hs === lastState.hs && m.sv <= lastState.sv) return;
+  lastState = { hs: m.hs, sv: m.sv };
+  V = m.v;
+  render();
+}
+function connectHost() {
+  if (!peer || peer.destroyed || role !== 'guest') return;
+  const c = peer.connect(peerIdFor(roomCode), { reliable: true });
+  if (!link) hostConn = c;
+  c.on('open', () => { hostConn = c; c.send({ t: 'hello', cid: me, name: myName }); linked('peer'); });
+  c.on('data', m => { if (link === 'peer' && hostConn === c) { lastHostMsg = Date.now(); guestMsg(m); } });
+  c.on('close', () => {
+    if (role === 'guest' && hostConn === c) { link = null; hostConn = null; setNet('Lost the host. Reconnecting…', true); retryLater(); useRelay(); }
+  });
+}
+function retryLater() {
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => {
+    if (!peer || peer.destroyed || role !== 'guest') return;
+    if (peer.disconnected) { try { peer.reconnect(); } catch (e) { /* skip */ } setTimeout(connectHost, 1500); }
+    else connectHost();
+  }, 2500);
+}
+
+/* ---- shared ---- */
+function act(name, data) {
+  if (role === 'guest') { if (hostConn && hostConn.open) hostConn.send({ t: 'act', act: name, data }); }
+  else if (S) handleAct(me, name, data);
+}
+
+function leave(msg) {
+  if (role === 'guest' && hostConn && hostConn.open) { try { hostConn.send({ t: 'bye' }); } catch (e) { /* skip */ } }
+  if (role === 'host') conns.forEach(c => { try { c.send({ t: 'closed' }); } catch (e) { /* skip */ } });
+  token++; clearTimeout(timer);
+  clearTimeout(retryTimer); clearTimeout(fallbackTimer); clearTimeout(giveUpTimer); clearInterval(helloIv); clearInterval(beatIv); helloIv = 0;
+  const p = peer; setTimeout(() => { try { p && p.destroy(); } catch (e) { /* skip */ } }, 300);
+  setTimeout(relayStop, 300);
+  relayConns.clear(); conns.clear(); link = null; peer = null; hostConn = null;
+  if (role === 'host') setItem(LS, 'pp-host', null);
+  if (role === 'guest') setItem(LS, 'pp-guest', null);
+  role = null; S = null; V = null; roomCode = ''; sel = []; wildRank = null; shownOver = null;
+  homeMsg = msg || ''; homeErr = !!msg;
+  setNet('');
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  closeModal();
+  render();
+}
+
+/* ================= rendering ================= */
 function cardText(c) { return c.rank === 0 ? 'Joker' : LBL[c.rank] + SUIT[c.suit]; }
 function cardLabel(c) {
   if (c.rank === 0) return 'Joker, wild';
   return `${RANK_NAME[c.rank] || c.rank} of ${SUIT_NAME[c.suit]}${isWild(c) ? ', wild' : ''}${is3S(c) ? ', kills the round' : ''}`;
 }
-
-function cardHTML(c, o = {}) {
+function cardHTML(c, o) {
+  o = o || {};
   const tag = o.btn ? 'button' : 'div';
   const attrs = o.btn ? ` type="button" data-id="${c.id}" aria-pressed="${o.sel ? 'true' : 'false'}" aria-label="${esc(cardLabel(c))}"` : ` aria-label="${esc(cardLabel(c))}"`;
   const cls = ['card'];
@@ -630,50 +1108,108 @@ function cardHTML(c, o = {}) {
   const t = isWild(c) ? '<span class="tag">WILD</span>' : is3S(c) ? '<span class="tag">KILL</span>' : '';
   return `<${tag} class="${cls.join(' ')}"${attrs}><span class="ci"><b>${LBL[c.rank]}</b><i>${SUIT[c.suit]}</i></span><span class="cc">${SUIT[c.suit]}</span>${t}${as}</${tag}>`;
 }
-
 function backHTML(k) { return Array.from({ length: k }, () => '<div class="card mini back" aria-hidden="true"></div>').join(''); }
-
 function titleBadge(p) {
   if (!p.title) return '<span class="badge t-none">none</span>';
   const slug = p.title.toLowerCase().replace(/\s+/g, '-');
   const short = { 'Vice President': 'Vice Pres.', 'Vice Peasant': 'Vice Peas.' }[p.title] || p.title;
   return `<span class="badge t-${slug}" title="${p.title}">${short}</span>`;
 }
-
-function selCards() {
-  const h = S.players[0].hand;
-  return S.sel.map(id => h.find(c => c.id === id)).filter(Boolean);
-}
-
-function chosenRank(ev) {
-  return S.wildRank != null && ev.ranks.includes(S.wildRank) ? S.wildRank : ev.ranks[ev.ranks.length - 1];
-}
+function vname(i) { return V.players[i] ? V.players[i].name : ''; }
+function you(i) { return i === V.me; }
+function myPlayer() { return V && V.me >= 0 ? V.players[V.me] : null; }
+function myHand() { const p = myPlayer(); return p && p.hand ? p.hand : []; }
+function selCards() { const h = myHand(); return sel.map(id => h.find(c => c.id === id)).filter(Boolean); }
+function chosenRank(ev) { return wildRank != null && ev.ranks.includes(wildRank) ? wildRank : ev.ranks[ev.ranks.length - 1]; }
+function isRoomHost() { return role === 'host' || role === 'solo'; }
+function myPendingSwap() { return V && V.exchange ? V.exchange.find(ex => ex.hi === V.me && !ex.back) : null; }
 
 function render() {
-  $('gameNo').textContent = `Game ${S.game} · ${S.players.length} players`;
+  const screen = !role || (role === 'guest' && !V) ? 'home' : V && V.phase === 'lobby' ? 'lobby' : 'game';
+  $('home').hidden = screen !== 'home';
+  $('lobby').hidden = screen !== 'lobby';
+  $('app').hidden = screen !== 'game';
+  if (screen === 'home') renderHome();
+  else if (screen === 'lobby') renderLobby();
+  else renderGame();
+}
+
+function renderNet() {
+  const el = $('net');
+  el.textContent = role === 'host' || role === 'guest' ? `· Room ${roomCode} · ${netText}` : '';
+  el.className = 'net' + (netWarn ? ' warn' : '');
+  $('lNet').textContent = netText || ' ';
+}
+
+function renderHome() {
+  if (document.activeElement !== $('hName')) $('hName').value = myName;
+  $('onlineBox').hidden = !onlineOK;
+  $('onlineNote').hidden = onlineOK;
+  const savedHost = getItem(LS, 'pp-host');
+  $('hReopen').hidden = !(savedHost && savedHost.code && role !== 'guest');
+  if (savedHost && savedHost.code) $('hReopen').textContent = `Reopen your room ${savedHost.code}`;
+  const solo = getItem(LS, 'pp-solo');
+  $('hContinue').hidden = !(solo && solo.v === 2 && solo.phase !== 'lobby');
+  $('hCreate').disabled = $('hJoin').disabled = role === 'guest';
+  const m = $('homeMsg');
+  m.textContent = homeMsg; m.className = 'msg' + (homeErr ? ' err' : '');
+}
+
+function shareLink() { return location.origin + location.pathname + '#' + roomCode; }
+
+function renderLobby() {
+  renderNet();
+  $('lCode').textContent = roomCode;
+  $('lLink').textContent = shareLink();
+  const host = role === 'host';
+  const n = V.players.length;
+  $('lCount').textContent = `Players (${n} of ${MAX_PLAYERS})`;
+  $('lPlayers').innerHTML = V.players.map(p => {
+    const dot = p.bot ? 'cpu' : p.online ? '' : 'off';
+    const tag = p.id === V.hostId ? 'Host' : p.bot ? 'Computer' : p.online ? '' : 'Away';
+    const rm = host && p.id !== V.hostId ? `<button class="x" type="button" data-remove="${esc(p.id)}" aria-label="Remove ${esc(p.name)}">Remove</button>` : '';
+    return `<li><span class="dot ${dot}" aria-hidden="true"></span><span class="nm">${esc(p.name)}${p.id === me ? ' (you)' : ''}</span><span class="note">${tag}</span>${rm}</li>`;
+  }).join('');
+  $('lHost').hidden = !host;
+  $('lAddBot').disabled = n >= MAX_PLAYERS;
+  $('lStart').disabled = n < 3;
+  $('lNote').textContent = host
+    ? (n < 3 ? 'You need at least 3 players. Share the code, or add computer players.' : 'Ready when you are. More friends can still join with the code.')
+    : 'Waiting for the host to start the game.';
+}
+
+function renderGame() {
+  renderNet();
+  $('gameNo').textContent = `Game ${V.game} · ${V.players.length} players`;
+  const h = myHand();
+  sel = sel.filter(id => h.some(c => c.id === id));
   renderSeats();
   renderTable();
   renderMe();
   renderLog();
-  store.set(SAVE_KEY, S);
+  if (V.phase === 'over' && shownOver !== V.game) { shownOver = V.game; setTimeout(openResults, 700); }
+  if (V.phase === 'over' && !$('modal').hidden && $('sheet').dataset.kind === 'results') openResults();
 }
 
 function renderSeats() {
-  const el = $('seats');
-  el.style.setProperty('--n', S.players.length - 1);
-  el.innerHTML = S.players.slice(1).map((p, k) => {
-    const i = k + 1;
-    const turn = S.phase === 'play' && S.turn === i && !S.busy;
+  const el = $('seats'), n = V.players.length;
+  const order = [];
+  for (let k = 1; k <= n; k++) { const j = V.me >= 0 ? (V.me + k) % n : k - 1; if (j !== V.me) order.push(j); }
+  el.style.setProperty('--n', order.length);
+  el.innerHTML = order.map(i => {
+    const p = V.players[i];
+    const turn = V.phase === 'play' && V.turn === i && !V.busy;
     let act = '', cls = '';
     if (p.place != null) act = `Out · ${ordinal(p.place)}`;
     else if (p.last && p.last.type === 'pass') { act = 'Passed'; cls = 'pass'; }
     else if (p.last && p.last.type === 'play') act = cap(p.last.text);
-    else if (turn) { act = 'Thinking…'; cls = 'pass'; }
+    else if (turn) { act = p.bot || !p.online ? 'Thinking…' : 'Their turn'; cls = 'pass'; }
+    const tag = p.bot ? '<small>CPU</small>' : !p.online ? '<small class="away">AWAY</small>' : '';
     return `<div class="seat${turn ? ' is-turn' : ''}${p.place != null ? ' is-out' : ''}">
       <div class="avatar${p.title === 'President' ? ' pres' : ''}" aria-hidden="true">${esc(p.name.charAt(0))}</div>
-      <div class="seat-name">${esc(p.name)}</div>
+      <div class="seat-name">${esc(p.name)}${tag}</div>
       ${titleBadge(p)}
-      <div class="seat-count"><span class="back-mini" aria-hidden="true"></span><span>${p.hand.length} card${p.hand.length === 1 ? '' : 's'}</span></div>
+      <div class="seat-count"><span class="back-mini" aria-hidden="true"></span><span>${p.count} card${p.count === 1 ? '' : 's'}</span></div>
       <div class="seat-act ${cls}">${esc(act)}</div>
     </div>`;
   }).join('');
@@ -681,94 +1217,95 @@ function renderSeats() {
 
 function renderTable() {
   const pile = $('pile'), lbl = $('pileLabel'), banner = $('banner');
-  banner.hidden = !S.banner;
-  banner.textContent = S.banner || '';
-  if (S.phase === 'exchange') {
-    pile.innerHTML = exchangeHTML();
-    lbl.textContent = '';
+  banner.hidden = !V.banner;
+  banner.textContent = V.banner || '';
+  if (V.phase === 'exchange') { pile.innerHTML = exchangeHTML(); lbl.textContent = ''; return; }
+  if (V.phase === 'over') {
+    const rows = V.lastGame || [];
+    pile.innerHTML = '<div class="empty">Game over</div>';
+    lbl.innerHTML = rows.length ? `<b>${esc(vname(rows[0].pi))}</b> is President · <b>${esc(vname(rows[rows.length - 1].pi))}</b> is Peasant` : '';
     return;
   }
-  if (S.phase === 'over') {
-    const rows = S.lastGame || [];
-    pile.innerHTML = `<div class="empty">Game over</div>`;
-    lbl.innerHTML = rows.length ? `<b>${esc(name(rows[0].pi))}</b> is President · <b>${esc(name(rows[rows.length - 1].pi))}</b> is Peasant` : '';
+  if (!V.pile) {
+    pile.innerHTML = '<div class="empty">Table clear</div>';
+    lbl.innerHTML = V.busy ? '' : `<b>${you(V.turn) ? 'You' : esc(vname(V.turn))}</b> ${you(V.turn) ? 'start' : 'starts'} this round${V.firstPlay ? ' with the 3♦' : ''}`;
+    lastSeq = V.seq;
     return;
   }
-  if (!S.pile) {
-    pile.innerHTML = `<div class="empty">Table clear</div>`;
-    lbl.innerHTML = S.busy ? '' : `<b>${esc(name(S.turn))}</b> ${S.turn === 0 ? 'lead' : 'leads'}${S.firstPlay ? ' with the 3♦' : ''}`;
-    lastSeq = S.seq;
-    return;
-  }
-  const prev = S.prevPiles[S.prevPiles.length - 1];
-  const asOf = play => c => (isWild(c) && !play.kill ? LBL[play.rank] : null);
-  const animate = S.seq !== lastSeq;
-  lastSeq = S.seq;
+  const prev = V.prevPiles[V.prevPiles.length - 1];
+  const animate = V.seq !== lastSeq;
+  lastSeq = V.seq;
+  const asOf = c => (isWild(c) && !V.pile.kill ? LBL[V.pile.rank] : null);
   pile.innerHTML =
     (prev ? `<div class="prev" aria-hidden="true">${prev.cards.map(c => cardHTML(c)).join('')}</div>` : '') +
-    `<div class="topplay${animate ? ' drop' : ''}">${S.pile.cards.map(c => cardHTML(c, { as: asOf(S.pile)(c) })).join('')}</div>`;
-  const down = S.pile.kill ? 0 : ((S.roundCounts || {})[S.pile.rank] || 0);
-  lbl.innerHTML = `<b>${esc(cap(describe(S.pile)))}</b> · ${esc(name(S.pile.by))}` +
-    (down >= 2 ? `<br>${Math.min(down, 4)} of 4 ${PLURAL[S.pile.rank]} down this round` : '');
+    `<div class="topplay${animate ? ' drop' : ''}">${V.pile.cards.map(c => cardHTML(c, { as: asOf(c) })).join('')}</div>`;
+  const down = V.pile.kill ? 0 : ((V.roundCounts || {})[V.pile.rank] || 0);
+  lbl.innerHTML = `<b>${esc(cap(describe(V.pile)))}</b> · ${you(V.pile.by) ? 'you' : esc(vname(V.pile.by))}` +
+    (down >= 2 ? `<br>${Math.min(down, 4)} of 4 ${PLURAL[V.pile.rank]} down this round` : '');
 }
 
 function exchangeHTML() {
-  const rows = S.exchange.map(ex => {
-    const hi = S.players[ex.hi], lo = S.players[ex.lo];
-    const seeGiven = hi.human || lo.human;
-    const given = seeGiven ? ex.given.map(c => cardHTML(c, { mini: true })).join('') : backHTML(ex.k);
-    const back = !ex.back ? '<span class="waiting">Choosing…</span>' : seeGiven ? ex.back.map(c => cardHTML(c, { mini: true })).join('') : backHTML(ex.k);
-    return `<div class="swap-row"><div class="swap-who">${esc(lo.name)} → ${esc(hi.name)}<small>${lo.title} gives the best ${ex.k === 1 ? 'card' : ex.k + ' cards'}</small></div><div class="swap-cards">${given}</div></div>
-      <div class="swap-row"><div class="swap-who">${esc(hi.name)} → ${esc(lo.name)}<small>${hi.title} gives back any ${ex.k === 1 ? 'card' : ex.k + ' cards'}</small></div><div class="swap-cards">${back}</div></div>`;
+  const rows = V.exchange.map(ex => {
+    const hi = V.players[ex.hi], lo = V.players[ex.lo];
+    const given = ex.given ? ex.given.map(c => cardHTML(c, { mini: true })).join('') : backHTML(ex.k);
+    const back = !ex.back ? '<span class="waiting">Choosing…</span>' : ex.back === 'hidden' ? backHTML(ex.k) : ex.back.map(c => cardHTML(c, { mini: true })).join('');
+    const nm = i => (you(i) ? 'You' : esc(V.players[i].name));
+    return `<div class="swap-row"><div class="swap-who">${nm(ex.lo)} → ${nm(ex.hi)}<small>${lo.title} gives the best ${ex.k === 1 ? 'card' : ex.k + ' cards'}</small></div><div class="swap-cards">${given}</div></div>
+      <div class="swap-row"><div class="swap-who">${nm(ex.hi)} → ${nm(ex.lo)}<small>${hi.title} gives back any ${ex.k === 1 ? 'card' : ex.k + ' cards'}</small></div><div class="swap-cards">${back}</div></div>`;
   }).join('');
   return `<div class="swap">${rows}</div>`;
 }
 
 function renderMe() {
-  const me = S.players[0], n = S.players.length;
-  $('meInfo').innerHTML = `<span class="me-name">${esc(me.name)}</span>${me.title ? titleBadge(me) : ''}<span class="me-count">${me.hand.length} card${me.hand.length === 1 ? '' : 's'}</span>`;
-  const sel = selCards();
+  const mp = myPlayer(), n = V.players.length;
+  const hand = myHand();
+  $('meInfo').innerHTML = mp
+    ? `<span class="me-name">${esc(mp.name)}</span>${mp.title ? titleBadge(mp) : ''}<span class="me-count">${hand.length} card${hand.length === 1 ? '' : 's'}</span>`
+    : `<span class="me-name">${esc(myName || 'You')}</span><span class="me-count">Watching</span>`;
+  const cards = selCards();
   let status = '', sub = '', playLabel = 'Play', playOk = false, passOk = false, hintOk = false, showPass = true, showHint = true;
   const rp = $('rankPick');
   rp.hidden = true;
 
-  if (S.phase === 'exchange') {
+  if (!mp) {
     showPass = false; showHint = false;
-    const ex = pendingHumanExchange();
+    status = 'This game was already going when you joined. You are dealt in next game.';
+    playLabel = 'Watching';
+  } else if (V.phase === 'exchange') {
+    showPass = false; showHint = false;
+    const ex = myPendingSwap();
     if (ex) {
-      status = `You are ${me.title}. Pick ${ex.k} card${ex.k > 1 ? 's' : ''} to give back to ${S.players[ex.lo].name}.`;
+      status = `You are ${mp.title}. Pick ${ex.k} card${ex.k > 1 ? 's' : ''} to give back to ${vname(ex.lo)}.`;
       playLabel = `Give ${ex.k} card${ex.k > 1 ? 's' : ''}`;
-      playOk = sel.length === ex.k;
-      if (sel.length > ex.k) sub = `Choose only ${ex.k}.`;
+      playOk = cards.length === ex.k;
     } else {
-      status = 'Cards are swapped. The President starts the game.';
-      playLabel = 'Start game';
-      playOk = true;
+      const waitingOn = V.exchange.filter(e => !e.back).map(e => vname(e.hi));
+      status = waitingOn.length ? `Waiting for ${waitingOn.join(' and ')} to give cards back…` : 'Cards are swapped. The game starts in a moment.';
+      playLabel = 'Swapping cards';
     }
-  } else if (S.phase === 'over') {
+  } else if (V.phase === 'over') {
     showPass = false; showHint = false;
-    status = me.place != null ? `You finished ${ordinal(me.place)}: ${titleFor(me.place, n)}.` : 'Game over.';
-    playLabel = 'Deal next game';
-    playOk = true;
+    status = mp.place != null ? `You finished ${ordinal(mp.place)}: ${titleFor(mp.place, n)}.` : 'Game over.';
+    if (isRoomHost()) { playLabel = 'Deal next game'; playOk = true; }
+    else playLabel = 'Waiting for the host to deal';
   } else {
-    const myTurn = S.turn === 0 && !S.busy && me.hand.length > 0;
-    if (!me.hand.length) status = `You finished ${ordinal(me.place)} (${titleFor(me.place, n)}). The others play on.`;
-    else if (S.busy) status = 'Clearing the table…';
-    else if (!myTurn) status = `${name(S.turn)} is thinking…`;
-    else if (!S.pile) status = S.firstPlay ? 'You have the 3♦. Start with a play that includes it.' : 'Your lead. Play a single, pair, triple or more of one number.';
-    else status = `Beat the ${describe(S.pile)}: ${S.pile.count} card${S.pile.count > 1 ? 's' : ''} of ${LBL[S.pile.rank]} or higher, or pass.`;
+    const myTurn = V.turn === V.me && !V.busy && hand.length > 0;
+    if (!hand.length) status = `You finished ${ordinal(mp.place)} (${titleFor(mp.place, n)}). The others play on.`;
+    else if (V.busy) status = 'Clearing the table…';
+    else if (!myTurn) status = `${vname(V.turn)}'s turn.`;
+    else if (!V.pile) status = V.firstPlay ? 'You have the 3♦. Start with a play that includes it.' : 'Your turn to start the round. Play a single, pair or triple. Everyone has to match that number of cards.';
+    else status = `Beat the ${describe(V.pile)}: ${V.pile.count} card${V.pile.count > 1 ? 's' : ''} of ${LBL[V.pile.rank]} or higher, or pass.`;
     if (myTurn) {
-      passOk = !!S.pile;
-      hintOk = true;
-      if (sel.length) {
-        const ev = evaluate(sel, S.pile, S.firstPlay);
+      passOk = !!V.pile; hintOk = true;
+      if (cards.length) {
+        const ev = evaluate(cards, V.pile, V.firstPlay);
         if (ev.ok) {
           playOk = true;
           const r = ev.kill ? 3 : chosenRank(ev);
           playLabel = ev.kill ? 'Play 3♠ and kill the round' : `Play ${describe({ count: ev.count, rank: r })}`;
           if (!ev.kill && ev.ranks.length > 1) {
             rp.hidden = false;
-            rp.innerHTML = `<span>Wild cards count as</span>` + ev.ranks.map(x => `<button type="button" class="chip${x === r ? ' on' : ''}" data-rank="${x}">${LBL[x]}</button>`).join('');
+            rp.innerHTML = '<span>Wild cards count as</span>' + ev.ranks.map(x => `<button type="button" class="chip${x === r ? ' on' : ''}" data-rank="${x}">${LBL[x]}</button>`).join('');
           }
         } else sub = ev.msg;
       }
@@ -784,187 +1321,245 @@ function renderMe() {
 }
 
 function renderHand() {
-  const h = $('hand'), me = S.players[0];
-  if (!me.hand.length) {
-    h.innerHTML = `<p class="out-note">${S.phase === 'over' ? 'Hands are empty.' : 'No cards left. Watching the table.'}</p>`;
-    return;
-  }
-  h.innerHTML = me.hand.map(c => cardHTML(c, { btn: true, sel: S.sel.includes(c.id), fresh: S.fresh.includes(c.id) })).join('');
+  const h = $('hand'), mp = myPlayer(), hand = myHand();
+  if (!mp) { h.innerHTML = '<p class="out-note">You are watching this game.</p>'; return; }
+  if (!hand.length) { h.innerHTML = `<p class="out-note">${V.phase === 'over' ? 'Hands are empty.' : 'No cards left. Watching the table.'}</p>`; return; }
+  h.innerHTML = hand.map(c => cardHTML(c, { btn: true, sel: sel.includes(c.id), fresh: mp.fresh.includes(c.id) })).join('');
   fitHand();
 }
-
 function fitHand() {
-  const h = $('hand'), n = S.players[0].hand.length;
+  const h = $('hand'), n = myHand().length;
   if (!n) return;
   const cw = parseFloat(getComputedStyle(h).getPropertyValue('--cw')) || 54;
   const W = h.clientWidth;
   const step = n > 1 ? Math.max(12, Math.min(cw + 6, (W - cw) / (n - 1))) : cw;
   h.style.setProperty('--overlap', (step - cw) + 'px');
 }
-
 function renderLog() {
-  const log = S.log;
+  const log = V.log || [];
   $('logLast').textContent = log.length ? log[log.length - 1] : 'Game log';
   $('logList').innerHTML = log.slice().reverse().map(t => `<li>${esc(t)}</li>`).join('');
   $('logList').setAttribute('start', log.length);
 }
 
-/* ---------- modals ---------- */
-function openModal(html) { $('sheet').innerHTML = html; $('modal').hidden = false; const f = $('sheet').querySelector('button, input, select'); if (f) f.focus(); }
-function closeModal() { $('modal').hidden = true; $('sheet').innerHTML = ''; }
+/* ================= modals ================= */
+function openModal(html, kind) { $('sheet').innerHTML = html; $('sheet').dataset.kind = kind || ''; $('modal').hidden = false; const f = $('sheet').querySelector('button, input, select'); if (f && kind !== 'results') f.focus(); }
+function closeModal() { $('modal').hidden = true; $('sheet').innerHTML = ''; $('sheet').dataset.kind = ''; }
 
 function openRules() {
+  const n = V && V.players ? V.players.length : 4;
   openModal(`<h2>How to <span>play</span></h2>
   <p class="lede">Get rid of all your cards first. The finishing order decides who is President and who is Peasant.</p>
   <ul class="rules">
     <li><b>Order.</b> 3 is the lowest card and 2 is the highest: 3 4 5 7 8 9 10 J Q K A 2.</li>
     <li><b>Wild cards.</b> Every 6 and both jokers are wild. They can stand in for any number, alone or alongside real cards.</li>
     <li><b>Who starts.</b> In the first game, whoever holds the 3♦ starts, and that first play has to include it. From the second game on, the President starts and can play anything.</li>
-    <li><b>Following.</b> Lead a single, pair, triple or more of one number. The next player plays the same number of cards, of the same number or higher, or passes.</li>
-    <li><b>3♠ kills.</b> Played alone on top of anything, the 3♠ ends the round on the spot and you lead the next one.</li>
+    <li><b>Following.</b> Whoever starts a round picks a single, pair or triple. Everyone after them has to play that same number of cards, of the same number or higher, or pass. It stays that way until the table clears.</li>
+    <li><b>3♠ kills.</b> Played alone on top of anything, the 3♠ ends the round on the spot and you start the next one.</li>
     <li><b>Four of a kind clears.</b> Once four cards of the same number are down in a round, the table clears. They don't have to be played together, and wild cards played as that number count. Whoever put down the fourth card starts the next round.</li>
     <li><b>Round end.</b> When everyone else passes, the cards are cleared and the play goes back to whoever put down the last cards. They start the next round. If they are already out, the next player starts.</li>
+    <li><b>Finishing.</b> When someone runs out of cards, the others keep playing until only one person still has cards.</li>
     <li><b>Titles.</b> First out is President, then Vice President. Second to last is Vice Peasant, last is Peasant. Everyone in between is a Citizen.</li>
     <li><b>Next game.</b> The Peasant hands their 2 best cards to the President, who gives back any 2. The Vice Peasant and Vice President swap 1 the same way. With 3 players it is 1 card each way.</li>
-    <li><b>Points.</b> President scores ${S.players.length - 1}, and each place lower scores one less. Last place scores 0.</li>
+    <li><b>Points.</b> President scores ${n - 1}, and each place lower scores one less. Last place scores 0.</li>
+    <li><b>Online rooms.</b> One phone creates a room and shares the 4-letter code. Up to 6 players, and the host can fill empty seats with computer players. If someone drops out, the computer plays their cards until they come back.</li>
   </ul>
   <div class="sheet-actions"><button class="btn primary" type="button" data-close>Got it</button></div>`);
 }
 
-function scoreRows(order) {
-  return order.map((pi, k) => {
-    const p = S.players[pi];
-    const g = S.lastGame && S.lastGame.find(r => r.pi === pi);
-    return `<li class="${p.human ? 'me-row' : ''}"><span class="pl">${k + 1}</span><span class="nm">${esc(p.name)}</span>${titleBadge(p)}<span class="pts">${g && S.phase === 'over' ? '+' + g.pts : ''}<small>${p.score} total</small></span></li>`;
-  }).join('');
-}
-
 function openResults() {
-  if (S.phase !== 'over') return;
-  const order = S.lastGame.map(r => r.pi);
-  const me = S.players[0];
-  const head = me.place === 0 ? 'You are <span>President</span>' : me.place === S.players.length - 1 ? 'You are the <span>Peasant</span>' : `Game ${S.game} <span>result</span>`;
+  if (!V || V.phase !== 'over') return;
+  const rows = V.lastGame || [];
+  const mp = myPlayer();
+  const head = mp && mp.place === 0 ? 'You are <span>President</span>' : mp && mp.place === V.players.length - 1 ? 'You are the <span>Peasant</span>' : `Game ${V.game} <span>result</span>`;
+  const list = rows.map((r, k) => {
+    const p = V.players[r.pi];
+    return `<li class="${r.pi === V.me ? 'me-row' : ''}"><span class="pl">${k + 1}</span><span class="nm">${esc(p.name)}</span>${titleBadge(p)}<span class="pts">+${r.pts}<small>${p.score} total</small></span></li>`;
+  }).join('');
+  const host = isRoomHost();
+  const btns = host
+    ? `<button class="btn" type="button" data-close>Look at the table</button>${role === 'host' ? '<button class="btn" type="button" id="mLobby">Back to lobby</button>' : ''}<button class="btn primary" type="button" id="mNext">Deal next game</button>`
+    : `<button class="btn primary" type="button" data-close>Look at the table</button>`;
   openModal(`<h2>${head}</h2>
-    <p class="lede">Finishing order for game ${S.game}. Titles carry into the next game's card swap.</p>
-    <ol class="order">${scoreRows(order)}</ol>
-    <div class="sheet-actions"><button class="btn" type="button" data-close>Look at the table</button><button class="btn primary" type="button" id="mNext">Deal next game</button></div>`);
+    <p class="lede">Finishing order for game ${V.game}. Titles carry into the next game's card swap.${host ? '' : ' The host deals the next game.'}</p>
+    <ol class="order">${list}</ol>
+    <div class="sheet-actions">${btns}</div>`, 'results');
 }
 
 function openScores() {
-  const order = S.players.map((p, i) => i).sort((a, b) => S.players[b].score - S.players[a].score);
-  const played = S.players.reduce((m, p) => Math.max(m, p.pres), 0) ? '' : '';
+  if (!V) return;
+  const order = V.players.map((p, i) => i).sort((a, b) => V.players[b].score - V.players[a].score);
+  const done = V.phase === 'over' ? V.game : V.game - 1;
   openModal(`<h2>Table <span>scores</span></h2>
-    <p class="lede">${S.game - (S.phase === 'over' ? 0 : 1)} game${S.game - (S.phase === 'over' ? 0 : 1) === 1 ? '' : 's'} finished at this table.${played}</p>
-    <ol class="order">${order.map((pi, k) => { const p = S.players[pi]; return `<li class="${p.human ? 'me-row' : ''}"><span class="pl">${k + 1}</span><span class="nm">${esc(p.name)}</span><span class="pts">${p.pres}×<small>President</small></span><span class="pts">${p.score}<small>points</small></span></li>`; }).join('')}</ol>
+    <p class="lede">${done} game${done === 1 ? '' : 's'} finished at this table.${V.waiting && V.waiting.length ? ' Waiting to join next game: ' + esc(V.waiting.join(', ')) + '.' : ''}</p>
+    <ol class="order">${order.map((pi, k) => { const p = V.players[pi]; return `<li class="${pi === V.me ? 'me-row' : ''}"><span class="pl">${k + 1}</span><span class="nm">${esc(p.name)}</span><span class="pts">${p.pres}×<small>President</small></span><span class="pts">${p.score}<small>points</small></span></li>`; }).join('')}</ol>
     <div class="sheet-actions"><button class="btn primary" type="button" data-close>Close</button></div>`);
 }
 
-function openNewTable() {
-  const s = settings();
-  openModal(`<h2>New <span>table</span></h2>
-    <p class="lede">Starts fresh: scores and titles reset.</p>
-    <form id="newForm">
-      <label class="field" for="fName">Your name<input id="fName" maxlength="14" value="${esc(s.name)}" autocomplete="off"></label>
-      <label class="field" for="fBots">Computer players
-        <select id="fBots">${[2, 3, 4, 5].map(k => `<option value="${k}"${k === s.bots ? ' selected' : ''}>${k} (${k + 1} players in all)</option>`).join('')}</select></label>
-      <label class="field" for="fSpeed">Computer speed
-        <select id="fSpeed"><option value="normal"${s.speed === 'normal' ? ' selected' : ''}>Normal</option><option value="fast"${s.speed === 'fast' ? ' selected' : ''}>Fast</option></select></label>
-      <div class="sheet-actions"><button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="submit">Deal</button></div>
-    </form>`);
+function openLeave() {
+  const msg = role === 'host' ? 'This closes the room for everyone in it.' : role === 'guest' ? 'The computer plays your cards while you are gone. You can rejoin with the same code and name.' : 'Your game is saved. You can continue it from the menu.';
+  openModal(`<h2>${role === 'host' ? 'Close the <span>room</span>?' : role === 'guest' ? 'Leave the <span>room</span>?' : 'Back to the <span>menu</span>?'}</h2>
+    <p class="lede">${msg}</p>
+    <div class="sheet-actions"><button class="btn" type="button" data-close>Stay</button><button class="btn primary" type="button" id="mLeave">${role === 'host' ? 'Close room' : role === 'guest' ? 'Leave' : 'Back to menu'}</button></div>`);
 }
 
-/* ---------- events ---------- */
-$('hand').addEventListener('click', e => {
-  const b = e.target.closest('.card[data-id]');
-  if (!b) return;
-  const id = +b.dataset.id;
-  const canPick = (S.phase === 'play' && S.players[0].hand.length) || (S.phase === 'exchange' && pendingHumanExchange());
-  if (!canPick) return;
-  if (S.sel.includes(id)) S.sel = S.sel.filter(x => x !== id);
-  else {
-    S.sel.push(id);
-    const ex = S.phase === 'exchange' && pendingHumanExchange();
-    if (ex && S.sel.length > ex.k) S.sel.shift();
-  }
-  S.wildRank = null;
-  render();
+/* ================= starting things ================= */
+function readName() {
+  const v = ($('hName').value || '').trim().slice(0, 14);
+  if (!v) { homeMsg = 'Type your name first.'; homeErr = true; renderHome(); $('hName').focus(); return false; }
+  myName = v; setItem(LS, 'pp-name', v);
+  return true;
+}
+function startSolo(bots) {
+  if (!readName()) return;
+  role = 'solo'; S = baseState('solo');
+  S.players.push(newPlayer(me, myName, false));
+  for (let i = 0; i < bots; i++) S.players.push(newPlayer('bot-' + rid(), BOT_NAMES[i], true));
+  shownOver = null; sel = [];
+  dealGame();
+}
+function continueSolo() {
+  const s = getItem(LS, 'pp-solo');
+  if (!s || s.v !== 2) return;
+  role = 'solo'; S = s; S.hostId = me;
+  const hp = S.players.find(p => !p.bot); if (hp) { hp.id = me; hp.online = true; }
+  shownOver = S.phase === 'over' ? S.game : null;
+  normalizeHost();
+  changed();
+}
+function createRoom() {
+  if (!readName()) return;
+  if (!netReady()) { homeMsg = "Couldn't load the connection tools. Check your internet and reload."; homeErr = true; renderHome(); return; }
+  role = 'host'; roomCode = newCode(); hostSess = rid();
+  S = baseState('room');
+  S.players.push(newPlayer(me, myName, false));
+  history.replaceState(null, '', '#' + roomCode);
+  openHostPeer(); startHostRelay();
+  changed();
+}
+function reopenRoom() {
+  const g = getItem(LS, 'pp-host');
+  if (!g || !g.S) return;
+  if (!readName()) return;
+  if (!netReady()) { homeMsg = "Couldn't load the connection tools. Check your internet and reload."; homeErr = true; renderHome(); return; }
+  role = 'host'; roomCode = g.code; hostSess = rid(); S = g.S;
+  const hp = S.players.find(p => p.id === S.hostId) || S.players.find(p => !p.bot);
+  if (hp) { hp.id = me; hp.name = myName; }
+  S.hostId = me;
+  shownOver = S.phase === 'over' ? S.game : null;
+  history.replaceState(null, '', '#' + roomCode);
+  openHostPeer(); startHostRelay();
+  normalizeHost();
+  changed();
+}
+function joinFromForm() {
+  if (!readName()) return;
+  const code = ($('hCode').value || '').toUpperCase().replace(/[^A-Z]/g, '');
+  if (code.length !== 4) { homeMsg = 'Room codes are 4 letters.'; homeErr = true; renderHome(); return; }
+  if (!netReady()) { homeMsg = "Couldn't load the connection tools. Check your internet and reload."; homeErr = true; renderHome(); return; }
+  history.replaceState(null, '', '#' + code);
+  joinRoom(code);
+}
+
+/* ================= events ================= */
+$('hSolo').addEventListener('click', () => startSolo(+$('hBots').value));
+$('hContinue').addEventListener('click', () => { if (readName()) continueSolo(); });
+$('hCreate').addEventListener('click', createRoom);
+$('hReopen').addEventListener('click', reopenRoom);
+$('joinForm').addEventListener('submit', e => { e.preventDefault(); joinFromForm(); });
+$('hRules').addEventListener('click', openRules);
+$('hName').addEventListener('input', () => { if (homeErr) { homeMsg = ''; homeErr = false; $('homeMsg').textContent = ''; } });
+
+$('lAddBot').addEventListener('click', () => act('addBot'));
+$('lStart').addEventListener('click', () => act('start'));
+$('lPlayers').addEventListener('click', e => { const b = e.target.closest('[data-remove]'); if (b) act('remove', { id: b.dataset.remove }); });
+$('lRules').addEventListener('click', openRules);
+$('lLeave').addEventListener('click', openLeave);
+$('lCopy').addEventListener('click', () => {
+  const link = shareLink(), msg = $('lCopyMsg');
+  const done = t => { msg.textContent = t; setTimeout(() => { msg.textContent = ''; }, 2500); };
+  const pick = () => { const r = document.createRange(); r.selectNodeContents($('lLink')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); done('Link selected. Copy it from here.'); };
+  try { navigator.clipboard.writeText(link).then(() => done('Link copied. Send it to your friends.'), pick); } catch (e) { pick(); }
 });
 
+$('hand').addEventListener('click', e => {
+  const b = e.target.closest('.card[data-id]');
+  if (!b || !V) return;
+  const id = +b.dataset.id;
+  const ex = V.phase === 'exchange' && myPendingSwap();
+  const canPick = (V.phase === 'play' && myHand().length) || ex;
+  if (!canPick) return;
+  if (sel.includes(id)) sel = sel.filter(x => x !== id);
+  else { sel.push(id); if (ex && sel.length > ex.k) sel.shift(); }
+  wildRank = null;
+  renderGame();
+});
 $('rankPick').addEventListener('click', e => {
   const b = e.target.closest('[data-rank]');
   if (!b) return;
-  S.wildRank = +b.dataset.rank;
-  render();
+  wildRank = +b.dataset.rank;
+  renderGame();
 });
-
 $('btnPlay').addEventListener('click', () => {
-  if (S.phase === 'exchange') {
-    if (pendingHumanExchange()) humanGiveBack();
-    else { S.exchange = null; S.fresh = S.fresh.slice(); startPlay(); }
+  if (!V) return;
+  if (V.phase === 'exchange') {
+    const ex = myPendingSwap();
+    if (ex && sel.length === ex.k) { act('giveBack', { ids: sel.slice() }); sel = []; }
     return;
   }
-  if (S.phase === 'over') { closeModal(); dealGame(); return; }
-  if (S.turn !== 0 || S.busy) return;
-  const sel = selCards();
-  const ev = evaluate(sel, S.pile, S.firstPlay);
+  if (V.phase === 'over') { if (isRoomHost()) { closeModal(); act('next'); } return; }
+  if (V.turn !== V.me || V.busy) return;
+  const cards = selCards();
+  const ev = evaluate(cards, V.pile, V.firstPlay);
   if (!ev.ok) return;
-  doPlay(0, sel, ev.kill ? 3 : chosenRank(ev), ev.kill);
+  act('play', { ids: cards.map(c => c.id), rank: ev.kill ? 3 : chosenRank(ev) });
+  sel = []; wildRank = null;
+  if (role === 'guest') renderGame();
 });
-
 $('btnPass').addEventListener('click', () => {
-  if (S.phase !== 'play' || S.turn !== 0 || S.busy || !S.pile) return;
-  doPass(0);
+  if (!V || V.phase !== 'play' || V.turn !== V.me || V.busy || !V.pile) return;
+  act('pass');
 });
-
 $('btnHint').addEventListener('click', () => {
-  if (S.phase !== 'play' || S.turn !== 0 || S.busy) return;
-  const ch = botChoose(0);
-  if (!ch) { S.sel = []; render(); $('sub').textContent = 'Best move: pass and save your strong cards.'; return; }
-  S.sel = ch.cards.map(c => c.id);
-  S.wildRank = ch.kill ? null : ch.rank;
-  render();
+  if (!V || V.phase !== 'play' || V.turn !== V.me || V.busy) return;
+  const others = V.players.filter((p, i) => i !== V.me && p.count > 0).map(p => p.count);
+  const ch = botChoose(myHand(), V.pile, V.firstPlay, V.roundCounts, others.length ? Math.min(...others) : 99);
+  if (!ch) { sel = []; renderGame(); $('sub').textContent = 'Best move: pass and save your strong cards.'; return; }
+  sel = ch.cards.map(c => c.id);
+  wildRank = ch.kill ? null : ch.rank;
+  renderGame();
 });
-
 $('btnRules').addEventListener('click', openRules);
 $('btnScores').addEventListener('click', openScores);
-$('btnNew').addEventListener('click', openNewTable);
+$('btnLeave').addEventListener('click', openLeave);
 
 $('modal').addEventListener('click', e => {
   if (e.target === $('modal') || e.target.closest('[data-close]')) closeModal();
-  else if (e.target.closest('#mNext')) { closeModal(); dealGame(); }
-});
-$('modal').addEventListener('submit', e => {
-  e.preventDefault();
-  const cfg = { name: ($('fName').value || 'You').trim().slice(0, 14) || 'You', bots: +$('fBots').value, speed: $('fSpeed').value };
-  store.set(SET_KEY, cfg);
-  closeModal();
-  newTable(cfg);
+  else if (e.target.closest('#mNext')) { closeModal(); act('next'); }
+  else if (e.target.closest('#mLobby')) { closeModal(); act('lobby'); }
+  else if (e.target.closest('#mLeave')) {
+    closeModal();
+    if (role === 'solo') { token++; clearTimeout(timer); role = null; S = null; V = null; homeMsg = ''; homeErr = false; render(); }
+    else leave();
+  }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').hidden) closeModal(); });
-window.addEventListener('resize', () => { if (S) fitHand(); });
+window.addEventListener('resize', () => { if (V && !$('app').hidden) fitHand(); });
+window.addEventListener('pagehide', () => { if (role === 'guest' && hostConn && hostConn.open) { try { hostConn.send({ t: 'away' }); } catch (e) { /* skip */ } } });
+window.addEventListener('beforeunload', e => { if (role === 'host' && conns.size) { e.preventDefault(); e.returnValue = ''; } });
 
-/* ---------- boot ---------- */
-function resume() {
-  token++; clearTimeout(timer);
-  if (S.pendingLeader != null) { finishRound(); return; }
-  if (S.phase === 'play') nextTurn();
-  else render();
-}
-
-function valid(s) { return s && s.v === 1 && Array.isArray(s.players) && s.players.length >= 3 && s.players[0].human; }
-
-function start(data) {
-  const fromHot = data && valid(data.S) ? data.S : null;
-  const saved = fromHot || store.get(SAVE_KEY, null);
-  if (valid(saved)) { S = saved; resume(); }
-  else newTable(settings());
-}
-
-if (window.claude && window.claude.hot && window.claude.hot.snapshot) {
-  try { window.claude.hot.snapshot(() => ({ S })); } catch (e) { /* no hot reload */ }
-}
-const hot = window.claude && window.claude.hot;
-if (hot && hot.ready) hot.ready(start); else start((hot && hot.data) || {});
+/* ================= boot ================= */
+(function boot() {
+  const hashCode = (location.hash || '').replace('#', '').toUpperCase().replace(/[^A-Z]/g, '');
+  if (hashCode.length === 4) $('hCode').value = hashCode;
+  const savedGuest = getItem(LS, 'pp-guest');
+  const savedHost = getItem(LS, 'pp-host');
+  render();
+  if (!onlineOK) return;
+  if (myName && savedHost && savedHost.code && hashCode === savedHost.code && netReady()) { reopenRoom(); return; }
+  if (myName && savedGuest && savedGuest.code && (!hashCode || hashCode === savedGuest.code) && netReady()) { joinRoom(savedGuest.code); return; }
+  if (hashCode.length === 4) { homeMsg = myName ? `Tap Join room to join room ${hashCode}.` : `Type your name, then tap Join room to join room ${hashCode}.`; renderHome(); }
+})();
 })();
 </script>
 
