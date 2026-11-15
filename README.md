@@ -11,7 +11,7 @@ The President card game in your browser, on phone or computer. Play online with 
 **Rules**
 - 3 is low, 2 is high. Every 6 and both jokers are wild.
 - The 3♦ starts the first game. After that, the President starts.
-- Whoever starts a round picks single, pair or triple. Everyone matches that number of cards, same number or higher, or passes.
+- Whoever starts a round picks single, pair or triple (never more than 3 cards). Everyone matches that number of cards, same number or higher, or passes. The number of cards stays the same until the round ends.
 - The 3♠ played alone kills the round.
 - Once four cards of one number are down in a round (wilds count), the table clears and whoever put the fourth card down starts.
 - When everyone else passes, it goes back to whoever put the last cards down.

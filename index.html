@@ -522,6 +522,7 @@ function describe(play) {
 function evaluate(cards, pile, mustHave3D) {
   if (!cards.length) return { ok: false, msg: '' };
   if (pile && cards.length === 1 && is3S(cards[0])) return { ok: true, kill: true, count: 1, ranks: [3] };
+  if (cards.length > 3) return { ok: false, msg: 'You can only play a single, a pair or a triple.' };
   if (mustHave3D && !cards.some(is3D)) return { ok: false, msg: 'The first play of the game has to include the 3♦.' };
   const nat = cards.filter(c => !isWild(c));
   if (new Set(nat.map(c => c.rank)).size > 1) return { ok: false, msg: 'Every card in a play must be the same number. 6s and jokers can fill in.' };
@@ -636,6 +637,7 @@ function checkGameOver() {
 /* computer players (also used for the Hint button) */
 function finishPlay(hand, pile, firstPlay) {
   if (pile && hand.length === 1 && is3S(hand[0])) return { cards: hand.slice(), rank: 3, kill: true };
+  if (hand.length > 3) return null;
   const nat = hand.filter(c => !isWild(c));
   if (new Set(nat.map(c => c.rank)).size > 1) return null;
   const rank = nat.length ? nat[0].rank : 15;
@@ -655,14 +657,17 @@ function botChoose(hand, pile, firstPlay, roundCounts, oppMin) {
   if (fin) return fin;
 
   if (!pile) {
-    if (firstPlay) return { cards: byRank[3].filter(c => !is3S(c)), rank: 3 };
+    if (firstPlay) {
+      const threes = byRank[3].filter(c => !is3S(c));
+      return { cards: threes.filter(is3D).concat(threes.filter(c => !is3D(c))).slice(0, 3), rank: 3 };
+    }
     for (const r of ranksAsc) {
       if (r === 15) continue;
       const cs = r === 3 ? byRank[r].filter(c => !is3S(c)) : byRank[r];
-      if (cs.length) return { cards: cs, rank: r };
+      if (cs.length) return { cards: cs.slice(0, 3), rank: r };
     }
-    if (byRank[15]) return { cards: byRank[15], rank: 15 };
-    if (wilds.length) return { cards: wilds, rank: 15 };
+    if (byRank[15]) return { cards: byRank[15].slice(0, 3), rank: 15 };
+    if (wilds.length) return { cards: wilds.slice(0, 3), rank: 15 };
     return { cards: [hand[0]], rank: hand[0].rank };
   }
 
@@ -1354,7 +1359,7 @@ function openRules() {
     <li><b>Order.</b> 3 is the lowest card and 2 is the highest: 3 4 5 7 8 9 10 J Q K A 2.</li>
     <li><b>Wild cards.</b> Every 6 and both jokers are wild. They can stand in for any number, alone or alongside real cards.</li>
     <li><b>Who starts.</b> In the first game, whoever holds the 3♦ starts, and that first play has to include it. From the second game on, the President starts and can play anything.</li>
-    <li><b>Following.</b> Whoever starts a round picks a single, pair or triple. Everyone after them has to play that same number of cards, of the same number or higher, or pass. It stays that way until the table clears.</li>
+    <li><b>Following.</b> Whoever starts a round picks a single, pair or triple. Nobody can put down more than 3 cards at once. Everyone after them has to play that same number of cards, of the same number or higher, or pass. The number of cards can't change until the round ends and the table clears.</li>
     <li><b>3♠ kills.</b> Played alone on top of anything, the 3♠ ends the round on the spot and you start the next one.</li>
     <li><b>Four of a kind clears.</b> Once four cards of the same number are down in a round, the table clears. They don't have to be played together, and wild cards played as that number count. Whoever put down the fourth card starts the next round.</li>
     <li><b>Round end.</b> When everyone else passes, the cards are cleared and the play goes back to whoever put down the last cards. They start the next round. If they are already out, the next player starts.</li>
