@@ -430,11 +430,11 @@ function dealGame() {
   if (!swap) { S.prevOrder = null; S.players.forEach(p => { p.title = null; }); }
   S.game++;
   const deck = makeDeck(), n = S.players.length;
-  S.players.forEach(p => { p.hand = []; p.place = null; p.last = null; p.fresh = []; });
+  S.players.forEach(p => { p.hand = []; p.place = null; p.last = null; p.fresh = []; p.stuck = false; });
   const start = Math.floor(Math.random() * n);
   deck.forEach((c, i) => S.players[(start + i) % n].hand.push(c));
   S.players.forEach(p => sortHand(p.hand));
-  Object.assign(S, { pile: null, prevPiles: [], roundCounts: {}, lastBy: null, passes: 0, finish: [], firstPlay: true, banner: null, busy: false, pendingLeader: null, exchange: null, exchangeDone: false, phase: 'play' });
+  Object.assign(S, { pile: null, prevPiles: [], roundCounts: {}, lastBy: null, passes: 0, finish: [], bottom: [], firstPlay: true, banner: null, busy: false, pendingLeader: null, exchange: null, exchangeDone: false, phase: 'play' });
   S.log = [];
   addLog(`Game ${S.game} dealt to ${n} players.`);
   if (swap) setupExchange(); else startPlay();
@@ -519,8 +519,9 @@ function describe(play) {
   return `${c} ${PLURAL[r]}`;
 }
 
-function evaluate(cards, pile, mustHave3D) {
+function evaluate(cards, pile, mustHave3D, handLen) {
   if (!cards.length) return { ok: false, msg: '' };
+  if (cards.length === handLen && cards.some(isWild)) return { ok: false, msg: "You can't finish on a 6 or a joker. Play your wild cards before your last cards." };
   if (pile && cards.length === 1 && is3S(cards[0])) return { ok: true, kill: true, count: 1, ranks: [3] };
   if (cards.length > 3) return { ok: false, msg: 'You can only play a single, a pair or a triple.' };
   if (mustHave3D && !cards.some(is3D)) return { ok: false, msg: 'The first play of the game has to include the 3♦.' };
@@ -533,11 +534,20 @@ function evaluate(cards, pile, mustHave3D) {
   return { ok: true, kill: false, count: cards.length, ranks };
 }
 
-function activeIdx() { return S.players.map((p, i) => i).filter(i => S.players[i].hand.length > 0); }
+function isActive(i) { const p = S.players[i]; return p.hand.length > 0 && !p.stuck; }
+function activeIdx() { return S.players.map((p, i) => i).filter(isActive); }
 function nextActive(from) {
   const n = S.players.length;
-  for (let k = 1; k <= n; k++) { const i = (from + k) % n; if (S.players[i].hand.length) return i; }
+  for (let k = 1; k <= n; k++) { const i = (from + k) % n; if (isActive(i)) return i; }
   return -1;
+}
+/* holding only wild cards means you can never go out: you're skipped from now on and lose */
+function markStuck(pi) {
+  const p = S.players[pi];
+  p.stuck = true;
+  S.bottom = S.bottom || [];
+  S.bottom.push(pi);
+  addLog(`${p.name} has only wild cards left, so ${p.name} is stuck and loses this game.`);
 }
 
 function doPlay(pi, cards, rank, kill) {
@@ -554,6 +564,7 @@ function doPlay(pi, cards, rank, kill) {
   p.last = { type: 'play', text: describe(S.pile) };
   addLog(`${p.name} played ${describe(S.pile)}.`);
   if (!p.hand.length) finishPlayer(pi);
+  else if (p.hand.every(isWild)) markStuck(pi);
   if (checkGameOver()) return;
   if (kill) { endRound(pi, `${p.name}'s 3♠ kills the round.`); return; }
   S.roundCounts[rank] = (S.roundCounts[rank] || 0) + cards.length;
@@ -574,7 +585,7 @@ function doPass(pi) {
 }
 
 function endRound(leader, msg) {
-  const L = S.players[leader].hand.length ? leader : nextActive(leader);
+  const L = isActive(leader) ? leader : nextActive(leader);
   S.busy = true; S.pendingLeader = L;
   S.banner = `${msg} ${pname(L)} starts the next round.`;
   addLog(S.banner);
@@ -611,13 +622,15 @@ function checkGameOver() {
   if (act.length === 1) {
     const last = act[0];
     S.finish.push(last);
-    S.players[last].place = S.finish.length - 1;
     addLog(`${pname(last)} is left holding ${S.players[last].hand.length} card${S.players[last].hand.length > 1 ? 's' : ''}.`);
   }
+  /* stuck players take the bottom places; the first one stuck finishes last */
+  S.finish = S.finish.concat((S.bottom || []).slice().reverse());
   const n = S.players.length;
   S.lastGame = S.finish.map((pi, place) => {
     const p = S.players[pi];
     const pts = n - 1 - place;
+    p.place = place;
     p.title = titleFor(place, n);
     p.score += pts;
     if (place === 0) p.pres++;
@@ -637,10 +650,10 @@ function checkGameOver() {
 /* computer players (also used for the Hint button) */
 function finishPlay(hand, pile, firstPlay) {
   if (pile && hand.length === 1 && is3S(hand[0])) return { cards: hand.slice(), rank: 3, kill: true };
-  if (hand.length > 3) return null;
-  const nat = hand.filter(c => !isWild(c));
+  if (hand.length > 3 || hand.some(isWild)) return null;
+  const nat = hand;
   if (new Set(nat.map(c => c.rank)).size > 1) return null;
-  const rank = nat.length ? nat[0].rank : 15;
+  const rank = nat[0].rank;
   if (pile && (hand.length !== pile.count || rank < pile.rank)) return null;
   if (firstPlay && !hand.some(is3D)) return null;
   return { cards: hand.slice(), rank, kill: false };
@@ -652,6 +665,14 @@ function botChoose(hand, pile, firstPlay, roundCounts, oppMin) {
   for (const c of hand) if (!isWild(c)) (byRank[c.rank] = byRank[c.rank] || []).push(c);
   const ranksAsc = Object.keys(byRank).map(Number).sort((a, b) => a - b);
   const danger = oppMin <= 2;
+  const nonWild = hand.length - wilds.length;
+  /* wild cards can't be the last cards played, so get rid of them while real cards are still in hand */
+  const urgent = wilds.length > 0 && nonWild <= wilds.length + 1;
+  const safe = use => {
+    const rest = hand.length - use.length;
+    if (rest === 0) return !use.some(isWild);
+    return rest > wilds.length - use.filter(isWild).length;
+  };
 
   const fin = finishPlay(hand, pile, firstPlay);
   if (fin) return fin;
@@ -661,18 +682,28 @@ function botChoose(hand, pile, firstPlay, roundCounts, oppMin) {
       const threes = byRank[3].filter(c => !is3S(c));
       return { cards: threes.filter(is3D).concat(threes.filter(c => !is3D(c))).slice(0, 3), rank: 3 };
     }
+    if (urgent) {
+      const ws = wilds.slice(0, Math.min(3, wilds.length));
+      if (safe(ws)) return { cards: ws, rank: 15 };
+    }
     for (const r of ranksAsc) {
       if (r === 15) continue;
-      const cs = r === 3 ? byRank[r].filter(c => !is3S(c)) : byRank[r];
-      if (cs.length) return { cards: cs.slice(0, 3), rank: r };
+      const cs = (r === 3 ? byRank[r].filter(c => !is3S(c)) : byRank[r]).slice(0, 3);
+      if (cs.length && safe(cs)) return { cards: cs, rank: r };
     }
-    if (byRank[15]) return { cards: byRank[15].slice(0, 3), rank: 15 };
-    if (wilds.length) return { cards: wilds.slice(0, 3), rank: 15 };
-    return { cards: [hand[0]], rank: hand[0].rank };
+    if (byRank[15] && safe(byRank[15].slice(0, 3))) return { cards: byRank[15].slice(0, 3), rank: 15 };
+    if (wilds.length) {
+      const ws = wilds.slice(0, Math.min(3, wilds.length));
+      if (safe(ws)) return { cards: ws, rank: 15 };
+    }
+    const any = hand.find(c => !isWild(c) && safe([c]));
+    if (any) return { cards: [any], rank: any.rank };
+    return { cards: [hand.find(c => !isWild(c)) || hand[0]], rank: (hand.find(c => !isWild(c)) || hand[0]).rank || 15 };
   }
 
   const need = pile.count;
   let best = null;
+  const consider = (use, r, cost) => { if (safe(use) && (!best || cost < best.cost)) best = { cards: use, rank: r, cost }; };
   for (const r of ranksAsc) {
     if (r < pile.rank) continue;
     const nat = r === 3 ? byRank[r].filter(c => !is3S(c)) : byRank[r];
@@ -682,20 +713,18 @@ function botChoose(hand, pile, firstPlay, roundCounts, oppMin) {
     else if (nat.length + wilds.length >= need) { w = need - nat.length; use = nat.concat(wilds.slice(0, w)); }
     else continue;
     const left = hand.length - need;
-    if (w > 0 && !(danger || left <= 2 || r >= 13)) continue;
+    if (w > 0 && !(danger || left <= 2 || r >= 13 || urgent)) continue;
     if (r === 15 && !(danger || pile.rank >= 12 || hand.length <= 4)) continue;
     const clears = ((roundCounts || {})[r] || 0) + need >= 4;
-    const cost = r + (nat.length > need ? 2.5 : 0) + w * 7 + (r === 15 ? 5 : 0) - (clears ? 4 : 0);
-    if (!best || cost < best.cost) best = { cards: use, rank: r, cost };
+    consider(use, r, r + (nat.length > need ? 2.5 : 0) + w * (urgent ? -3 : 7) + (r === 15 ? 5 : 0) - (clears ? 4 : 0));
   }
+  if (wilds.length >= need && (urgent || danger || pile.rank >= 14)) consider(wilds.slice(0, need), 15, urgent ? 0 : 30);
   const killer = hand.find(is3S);
-  if (killer) {
+  if (killer && safe([killer])) {
     const worth = pile.rank >= 13 || danger || hand.length <= 3 || (pile.count >= 2 && pile.rank >= 10);
     if (worth && (!best || best.rank === 15 || best.cards.some(isWild))) return { cards: [killer], rank: 3, kill: true };
   }
-  if (best) return best;
-  if (wilds.length >= need && (danger || pile.rank >= 14)) return { cards: wilds.slice(0, need), rank: 15 };
-  return null;
+  return best;
 }
 
 function botMove(pi) {
@@ -703,9 +732,18 @@ function botMove(pi) {
   const p = S.players[pi];
   if (!isAuto(p)) return;
   const others = activeIdx().filter(i => i !== pi).map(i => S.players[i].hand.length);
-  const ch = botChoose(p.hand, S.pile, S.firstPlay, S.roundCounts, others.length ? Math.min(...others) : 99);
+  let ch = botChoose(p.hand, S.pile, S.firstPlay, S.roundCounts, others.length ? Math.min(...others) : 99);
+  if (ch) {
+    const ev = evaluate(ch.cards, S.pile, S.firstPlay, p.hand.length);
+    if (!ev.ok || (!ev.kill && !ev.ranks.includes(ch.rank))) ch = null;
+    else ch.kill = ev.kill;
+  }
+  if (!ch && !S.pile) {
+    const c = p.hand.find(x => !isWild(x) && (!S.firstPlay || is3D(x)));
+    if (c) ch = { cards: [c], rank: c.rank };
+  }
   if (ch) doPlay(pi, ch.cards, ch.rank, ch.kill);
-  else doPass(pi);
+  else if (S.pile) doPass(pi);
 }
 
 function schedule(fn, ms) {
@@ -735,7 +773,7 @@ function handleAct(pid, act, data) {
     const ids = Array.isArray(data.ids) ? [...new Set(data.ids)] : [];
     const cards = ids.map(id => hand.find(c => c.id === id));
     if (!cards.length || cards.some(c => !c)) return;
-    const ev = evaluate(cards, S.pile, S.firstPlay);
+    const ev = evaluate(cards, S.pile, S.firstPlay, hand.length);
     if (!ev.ok) return;
     const rank = ev.kill ? 3 : (ev.ranks.includes(+data.rank) ? +data.rank : ev.ranks[ev.ranks.length - 1]);
     doPlay(pi, cards, rank, ev.kill);
@@ -781,7 +819,7 @@ function viewFor(pid) {
   }));
   v.me = idx;
   v.players = S.players.map((p, j) => ({
-    id: p.id, name: p.name, bot: p.bot, online: p.online, count: p.hand.length, score: p.score, title: p.title, place: p.place,
+    id: p.id, name: p.name, bot: p.bot, online: p.online, count: p.hand.length, stuck: !!p.stuck, score: p.score, title: p.title, place: p.place,
     last: p.last, pres: p.pres, peas: p.peas, hand: j === idx ? JSON.parse(JSON.stringify(p.hand)) : null, fresh: j === idx ? p.fresh.slice() : []
   }));
   v.exchange = S.exchange ? S.exchange.map(ex => {
@@ -1205,7 +1243,9 @@ function renderSeats() {
     const p = V.players[i];
     const turn = V.phase === 'play' && V.turn === i && !V.busy;
     let act = '', cls = '';
-    if (p.place != null) act = `Out · ${ordinal(p.place)}`;
+    if (p.place != null && V.phase !== 'over' && !p.stuck) act = `Out · ${ordinal(p.place)}`;
+    else if (p.place != null) act = ordinal(p.place);
+    else if (p.stuck) { act = 'Stuck on wilds'; cls = 'pass'; }
     else if (p.last && p.last.type === 'pass') { act = 'Passed'; cls = 'pass'; }
     else if (p.last && p.last.type === 'play') act = cap(p.last.text);
     else if (turn) { act = p.bot || !p.online ? 'Thinking…' : 'Their turn'; cls = 'pass'; }
@@ -1294,8 +1334,9 @@ function renderMe() {
     if (isRoomHost()) { playLabel = 'Deal next game'; playOk = true; }
     else playLabel = 'Waiting for the host to deal';
   } else {
-    const myTurn = V.turn === V.me && !V.busy && hand.length > 0;
-    if (!hand.length) status = `You finished ${ordinal(mp.place)} (${titleFor(mp.place, n)}). The others play on.`;
+    const myTurn = V.turn === V.me && !V.busy && hand.length > 0 && !mp.stuck;
+    if (mp.stuck) status = 'You only have wild cards left, so you are stuck. You lose this game and get skipped until it ends.';
+    else if (!hand.length) status = `You finished ${ordinal(mp.place)} (${titleFor(mp.place, n)}). The others play on.`;
     else if (V.busy) status = 'Clearing the table…';
     else if (!myTurn) status = `${vname(V.turn)}'s turn.`;
     else if (!V.pile) status = V.firstPlay ? 'You have the 3♦. Start with a play that includes it.' : 'Your turn to start the round. Play a single, pair or triple. Everyone has to match that number of cards.';
@@ -1303,7 +1344,7 @@ function renderMe() {
     if (myTurn) {
       passOk = !!V.pile; hintOk = true;
       if (cards.length) {
-        const ev = evaluate(cards, V.pile, V.firstPlay);
+        const ev = evaluate(cards, V.pile, V.firstPlay, hand.length);
         if (ev.ok) {
           playOk = true;
           const r = ev.kill ? 3 : chosenRank(ev);
@@ -1360,6 +1401,7 @@ function openRules() {
     <li><b>Wild cards.</b> Every 6 and both jokers are wild. They can stand in for any number, alone or alongside real cards.</li>
     <li><b>Who starts.</b> In the first game, whoever holds the 3♦ starts, and that first play has to include it. From the second game on, the President starts and can play anything.</li>
     <li><b>Following.</b> Whoever starts a round picks a single, pair or triple. Nobody can put down more than 3 cards at once. Everyone after them has to play that same number of cards, of the same number or higher, or pass. The number of cards can't change until the round ends and the table clears.</li>
+    <li><b>No finishing on a wild.</b> Your last play can't include a 6 or a joker, so play your wild cards before your last cards. If you end up holding only wild cards, you're stuck: you get skipped for the rest of the game and you lose.</li>
     <li><b>3♠ kills.</b> Played alone on top of anything, the 3♠ ends the round on the spot and you start the next one.</li>
     <li><b>Four of a kind clears.</b> Once four cards of the same number are down in a round, the table clears. They don't have to be played together, and wild cards played as that number count. Whoever put down the fourth card starts the next round.</li>
     <li><b>Round end.</b> When everyone else passes, the cards are cleared and the play goes back to whoever put down the last cards. They start the next round. If they are already out, the next player starts.</li>
@@ -1515,7 +1557,7 @@ $('btnPlay').addEventListener('click', () => {
   if (V.phase === 'over') { if (isRoomHost()) { closeModal(); act('next'); } return; }
   if (V.turn !== V.me || V.busy) return;
   const cards = selCards();
-  const ev = evaluate(cards, V.pile, V.firstPlay);
+  const ev = evaluate(cards, V.pile, V.firstPlay, myHand().length);
   if (!ev.ok) return;
   act('play', { ids: cards.map(c => c.id), rank: ev.kill ? 3 : chosenRank(ev) });
   sel = []; wildRank = null;
