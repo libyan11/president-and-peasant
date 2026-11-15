@@ -14,9 +14,8 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Manrope:wght@500;600;700;800&display=swap">
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Manrope:wght@500;600;700;800&display=swap" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Manrope:wght@500;600;700;800&display=swap"></noscript>
+<script>/* connection tools load in the background, so the page shows at once; room actions wait for NET */window.NET=Promise.all(['vendor/peerjs-1.5.4.min.js','vendor/mqtt-5.10.1.min.js'].map(function(s){return new Promise(function(r){var e=document.createElement('script');e.src=s;e.async=false;e.onload=e.onerror=function(){r()};document.head.appendChild(e)})})).then(function(){window.NET_DONE=1});</script>
 <style>
 /* Layout: a felt card table. Opponents sit along the far rail, the pile is in the middle, your fanned hand runs along the near edge. Home and lobby are single cards on the same felt. */
 :root {
@@ -909,6 +908,9 @@ let fallbackTimer = 0, giveUpTimer = 0, retryTimer = 0, helloIv = 0, beatIv = 0,
 const relay = { clients: [], seq: 0, sess: '', seen: new Map() };
 
 function netReady() { return typeof Peer !== 'undefined' || typeof mqtt !== 'undefined'; }
+/* the connection tools load in the background; a room tap made before they arrive runs once they do */
+let netWait = false;
+function waitNet(fn) { if (window.NET_DONE) return false; if (!netWait) { netWait = true; NET.then(() => { netWait = false; fn(); }); } return true; }
 function newCode() { const a = 'ABCDEFGHJKMNPQRSTUVWXYZ'; let c = ''; for (let i = 0; i < 4; i++) c += a[Math.floor(Math.random() * a.length)]; return c; }
 function peerIdFor(code) { return PEER_PREFIX + code.toLowerCase(); }
 function roomTopic(rest) { return 'room/' + roomCode.toLowerCase() + '/' + rest; }
@@ -1561,6 +1563,7 @@ function continueSolo() {
 }
 function createRoom() {
   if (!readName()) return;
+  if (waitNet(createRoom)) return;
   if (!netReady()) { homeMsg = "Couldn't load the connection tools. Check your internet and reload."; homeErr = true; renderHome(); return; }
   role = 'host'; roomCode = newCode(); hostSess = rid();
   S = baseState('room');
@@ -1573,6 +1576,7 @@ function reopenRoom() {
   const g = getItem(LS, 'pp-host');
   if (!g || !g.S) return;
   if (!readName()) return;
+  if (waitNet(reopenRoom)) return;
   if (!netReady()) { homeMsg = "Couldn't load the connection tools. Check your internet and reload."; homeErr = true; renderHome(); return; }
   role = 'host'; roomCode = g.code; hostSess = rid(); S = g.S;
   const hp = S.players.find(p => p.id === S.hostId) || S.players.find(p => !p.bot);
@@ -1588,6 +1592,7 @@ function joinFromForm() {
   if (!readName()) return;
   const code = ($('hCode').value || '').toUpperCase().replace(/[^A-Z]/g, '');
   if (code.length !== 4) { homeMsg = 'Room codes are 4 letters.'; homeErr = true; renderHome(); return; }
+  if (waitNet(joinFromForm)) return;
   if (!netReady()) { homeMsg = "Couldn't load the connection tools. Check your internet and reload."; homeErr = true; renderHome(); return; }
   history.replaceState(null, '', '#' + code);
   joinRoom(code);
@@ -1706,9 +1711,12 @@ window.addEventListener('beforeunload', e => { if (role === 'host' && conns.size
   const savedHost = getItem(LS, 'pp-host');
   render();
   if (!onlineOK) return;
+  NET.then(() => {
+  if (role) return;
   if (myName && savedHost && savedHost.code && hashCode === savedHost.code && netReady()) { reopenRoom(); return; }
   if (myName && savedGuest && savedGuest.code && (!hashCode || hashCode === savedGuest.code) && netReady()) { joinRoom(savedGuest.code); return; }
   if (hashCode.length === 4) { homeMsg = myName ? `Tap Join room to join room ${hashCode}.` : `Type your name, then tap Join room to join room ${hashCode}.`; renderHome(); }
+  });
 })();
 })();
 </script>
