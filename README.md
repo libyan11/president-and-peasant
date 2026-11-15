@@ -6,7 +6,7 @@ https://libyan11.github.io/president-and-peasant/
 
 The President card game in your browser, on phone or computer. Play online with friends, or against the computer.
 
-**Play with friends:** one person taps *Create a room* and shares the 4-letter code or link. Everyone else types the code and taps *Join room*. Up to 6 players, and the host can fill empty seats with computer players. If someone drops out, the computer plays their cards until they come back.
+**Play with friends:** one person taps *Create a room* and shares the 4-letter code or link. Everyone else types the code and taps *Join room*. 2 to 8 players, and the host can fill empty seats with computer players. If someone drops out, the computer plays their cards until they come back.
 
 **Rules**
 - 3 is low, 2 is high. Every 6 and both jokers are wild.

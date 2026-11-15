@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>/* an old link with no room code opens the games hub once per visit */(function(){try{var n=performance.getEntriesByType("navigation")[0];if(location.pathname==="/"||location.hash||location.search||(n&&n.type!=="navigate")||matchMedia("(display-mode: standalone)").matches||navigator.standalone||sessionStorage.getItem("hub-seen")||(document.referrer&&new URL(document.referrer).origin===location.origin))return;location.replace("/?from=president")}catch(e){}})()</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0F3A33">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -229,6 +230,7 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
   #btnMenu { display: inline-block; }
   .brand h1 { font-size: 16px; white-space: nowrap; }
   .seats { gap: 5px; }
+  .seats.many { grid-template-columns: repeat(var(--half), minmax(0, 1fr)); }
   .seat { padding: 6px 2px; gap: 2px; border-radius: 12px; }
   .avatar { display: none; }
   .seat-name { font-size: 12.5px; }
@@ -296,10 +298,13 @@ h1, h2, h3 { font-family: var(--f-display); margin: 0; line-height: 1.1; text-wr
       <h3>Play against the computer</h3>
       <div class="row">
         <select class="input grow" id="hBots" style="width:auto">
+          <option value="1">1 computer player</option>
           <option value="2">2 computer players</option>
           <option value="3" selected>3 computer players</option>
           <option value="4">4 computer players</option>
           <option value="5">5 computer players</option>
+          <option value="6">6 computer players</option>
+          <option value="7">7 computer players</option>
         </select>
         <button class="btn" id="hSolo" type="button">Deal</button>
       </div>
@@ -394,8 +399,8 @@ const RANK_NAME = { 11: 'Jack', 12: 'Queen', 13: 'King', 14: 'Ace', 15: '2' };
 const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
 const SUIT_NAME = { S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' };
 const SUIT_ORDER = { D: 0, C: 1, H: 2, S: 3 };
-const BOT_NAMES = ['Nour', 'Sami', 'Layla', 'Karim', 'Huda'];
-const MAX_PLAYERS = 6;
+const BOT_NAMES = ['Nour', 'Sami', 'Layla', 'Karim', 'Huda', 'Omar', 'Rania'];
+const MAX_PLAYERS = 8, MIN_PLAYERS = 2;
 const SITE = 'https://libyan11.github.io/president-and-peasant/';
 
 const LS = (() => { try { return window.localStorage; } catch (e) { return null; } })();
@@ -844,7 +849,7 @@ function handleAct(pid, act, data) {
     conns.forEach(c => { if (c.pid === data.id) { try { c.send({ t: 'kicked' }); } catch (e) { /* gone */ } } });
     changed();
   } else if (act === 'start') {
-    if (S.phase !== 'lobby' || S.players.length < 3) return;
+    if (S.phase !== 'lobby' || S.players.length < MIN_PLAYERS) return;
     dealGame();
   } else if (act === 'next') {
     if (S.phase !== 'over') return;
@@ -1122,7 +1127,7 @@ function guestRelayMsg(m) {
 }
 function guestMsg(m) {
   if (!m) return;
-  if (m.t === 'full') { leave('That room is full. Rooms hold 6 players.'); return; }
+  if (m.t === 'full') { leave('That room is full. Rooms hold 8 players.'); return; }
   if (m.t === 'kicked') { leave('The host removed you from the room.'); return; }
   if (m.t === 'closed') { leave('The host closed the room.'); return; }
   if (m.t !== 'state') return;
@@ -1265,9 +1270,9 @@ function renderLobby() {
   }).join('');
   $('lHost').hidden = !host;
   $('lAddBot').disabled = n >= MAX_PLAYERS;
-  $('lStart').disabled = n < 3;
+  $('lStart').disabled = n < MIN_PLAYERS;
   $('lNote').textContent = host
-    ? (n < 3 ? 'You need at least 3 players. Share the code, or add computer players.' : 'Ready when you are. More friends can still join with the code.')
+    ? (n < MIN_PLAYERS ? 'You need at least 2 players. Share the code, or add computer players.' : 'Ready when you are. More friends can still join with the code.')
     : 'Waiting for the host to start the game.';
 }
 
@@ -1291,6 +1296,8 @@ function renderSeats() {
   const order = [];
   for (let k = 1; k <= n; k++) { const j = V.me >= 0 ? (V.me + k) % n : k - 1; if (j !== V.me) order.push(j); }
   el.style.setProperty('--n', order.length);
+  el.style.setProperty('--half', Math.ceil(order.length / 2));
+  el.classList.toggle('many', order.length > 5);
   el.innerHTML = order.map(i => {
     const p = V.players[i];
     const turn = V.phase === 'play' && V.turn === i && !V.busy;
@@ -1485,9 +1492,9 @@ function openRules() {
     <li><b>Round end.</b> When everyone else passes, the cards are cleared and the play goes back to whoever put down the last cards. They start the next round. If they are already out, the next player starts.</li>
     <li><b>Finishing.</b> When someone runs out of cards, the others keep playing until only one person still has cards.</li>
     <li><b>Titles.</b> First out is President, then Vice President. Second to last is Vice Peasant, last is Peasant. Everyone in between is a Citizen.</li>
-    <li><b>Next game.</b> The Peasant hands their 2 best cards to the President, who gives back any 2. The Vice Peasant and Vice President swap 1 the same way. With 3 players it is 1 card each way.</li>
+    <li><b>Next game.</b> The Peasant hands their 2 best cards to the President, who gives back any 2. The Vice Peasant and Vice President swap 1 the same way. With 2 or 3 players it is 1 card each way.</li>
     <li><b>Points.</b> President scores ${n - 1}, and each place lower scores one less. Last place scores 0.</li>
-    <li><b>Online rooms.</b> One phone creates a room and shares the 4-letter code. Up to 6 players, and the host can fill empty seats with computer players. If someone drops out, the computer plays their cards until they come back.</li>
+    <li><b>Online rooms.</b> One phone creates a room and shares the 4-letter code. 2 to 8 players, and the host can fill empty seats with computer players. If someone drops out, the computer plays their cards until they come back.</li>
   </ul>
   <div class="sheet-actions"><button class="btn primary" type="button" data-close>Got it</button></div>`);
 }
